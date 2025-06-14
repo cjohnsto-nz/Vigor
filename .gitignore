@@ -2,12 +2,7 @@
 bin
 obj
 
-# Visual Studio files
-.vs
-*.sln
-*.csproj
-*.user
-*.suo
+
 
 
 # Mod files

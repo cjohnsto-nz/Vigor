@@ -1,0 +1,81 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net7.0</TargetFramework>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>bin\$(Configuration)\</OutputPath>
+    <GamePath>C:\Program Files (x86)\Steam\steamapps\common\Vintage Story</GamePath> <!-- Adjust if your VS install path is different -->
+    <GamePath Condition="Exists('C:\Users\$(USERNAME)\AppData\Roaming\Vintagestory')">C:\Users\$(USERNAME)\AppData\Roaming\Vintagestory</GamePath>
+    <GamePath Condition="Exists('$(VINTAGE_STORY)')">$(VINTAGE_STORY)</GamePath>
+    <DefineConstants>$(DefineConstants);VINTAGE_STORY</DefineConstants>
+    <AssemblyName>Vigor</AssemblyName>
+    <RootNamespace>Vigor</RootNamespace>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo> <!-- We'll use AssemblyInfo.cs -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="VintagestoryAPI.dll">
+      <HintPath>$(GamePath)\VintagestoryAPI.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="VintagestoryLib.dll">
+      <HintPath>$(GamePath)\VintagestoryLib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony.dll">
+      <HintPath>$(GamePath)\Lib\0Harmony.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="Newtonsoft.Json.dll">
+      <HintPath>$(GamePath)\Lib\Newtonsoft.Json.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="protobuf-net.dll">
+      <HintPath>$(GamePath)\Lib\protobuf-net.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="System.Data.SQLite.dll">
+      <HintPath>$(GamePath)\Lib\System.Data.SQLite.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- Define the name of your mod's output folder -->
+    <ModFolderName>Vigor</ModFolderName>
+    <!-- Define where the packaged mod will be placed, relative to the project output path -->
+    <ModPackageDir>ModPackage\$(ModFolderName)\</ModPackageDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Gui\**" />
+    <None Include="Gui\**" />
+  </ItemGroup>
+
+  <Target Name="PackageMod" AfterTargets="Build">
+    <PropertyGroup>
+      <!-- Full path to the packaged mod directory -->
+      <FullModPackagePath>$(OutputPath)\$(ModPackageDir)</FullModPackagePath>
+    </PropertyGroup>
+
+    <Message Text="Packaging Vigor mod to: $(FullModPackagePath)" Importance="high" />
+
+    <!-- Create the target directory -->
+    <MakeDir Directories="$(FullModPackagePath)" />
+    <MakeDir Directories="$(FullModPackagePath)assets" />
+
+    <!-- Copy modinfo.json -->
+    <Copy SourceFiles="modinfo.json" DestinationFolder="$(FullModPackagePath)" />
+
+    <!-- Copy the compiled DLL -->
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(FullModPackagePath)" />
+
+    <!-- Copy assets -->
+    <!-- Ensure the assets folder exists in your project root -->
+    <ItemGroup>
+      <_ModAssets Include="assets\**\*.*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_ModAssets)" DestinationFiles="@(_ModAssets->'$(FullModPackagePath)assets\%(RecursiveDir)%(Filename)%(Extension)')" />
+
+    <Message Text="Vigor mod packaged successfully." Importance="high" />
+  </Target>
+</Project>
