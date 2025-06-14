@@ -75,7 +75,7 @@ namespace Vigor.Hud
 
             _staminaStatbar.SetValues(current, 0, max);
             _staminaStatbar.ShouldFlash = isExhausted;
-            _staminaStatbar.SetLineInterval(maxStamina / 25);
+            _staminaStatbar.SetLineInterval(666/maxStamina);
         }
 
         public override bool TryClose() => false;

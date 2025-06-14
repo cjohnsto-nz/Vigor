@@ -161,7 +161,7 @@ namespace Vigor.Behaviors
 
             float costPerSecond = 0f;
 
-            if (isSprinting)
+            if (isSprinting && plr.OnGround)
             {
                 costPerSecond += Config.SprintStaminaCostPerSecond;
             }
@@ -205,6 +205,7 @@ namespace Vigor.Behaviors
             {
                 CurrentStamina -= Config.JumpStaminaCost;
                 _jumpCooldown = true;
+                if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Jump stamina cost: {Config.JumpStaminaCost} applied (Category: jump).", EnumChatType.Notification);
             }
 
             if (fatiguingActionThisTick)

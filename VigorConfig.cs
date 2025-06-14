@@ -2,14 +2,14 @@ namespace Vigor
 {
     public class VigorConfig
     {
-        public float MaxStamina = 250f;
-        public float StaminaGainPerSecond = 10f;
+        public float MaxStamina = 150f;
+        public float StaminaGainPerSecond = 7f;
         public float StaminaLossCooldownSeconds = 1f;
-        public float SprintStaminaCostPerSecond = 5f;
-        public float SwimStaminaCostPerSecond = 5f;
-        public float JumpStaminaCost = 3f;
+        public float SprintStaminaCostPerSecond = 3f;
+        public float SwimStaminaCostPerSecond = 3f;
+        public float JumpStaminaCost = 2f;
         public float StaminaExhaustionThreshold = 0f;
-        public float StaminaRequiredToRecover = 30f;
+        public float StaminaRequiredToRecover = 50f;
 
         public bool DebugMode = true; // Enable/disable debug logging
 
