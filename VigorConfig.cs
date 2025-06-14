@@ -7,7 +7,7 @@ namespace Vigor
         public float StaminaLossCooldownSeconds = 1f;
         public float SprintStaminaCostPerSecond = 3f;
         public float SwimStaminaCostPerSecond = 3f;
-        public float JumpStaminaCost = 2f;
+        public float JumpStaminaCost = 5f;
         public float StaminaExhaustionThreshold = 0f;
         public float StaminaRequiredToRecover = 50f;
 

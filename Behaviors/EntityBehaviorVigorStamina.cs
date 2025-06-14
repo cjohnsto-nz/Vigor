@@ -53,6 +53,33 @@ namespace Vigor.Behaviors
         {
         }
 
+        public override void OnFallToGround(Vec3d lastTerrainContact, double withYMotion)
+        {
+            base.OnFallToGround(lastTerrainContact, withYMotion);
+            
+            // Only apply jump costs when on the server side
+            if (entity.World.Side != EnumAppSide.Server) return;
+            
+            // Calculate approximate fall height from velocity
+            float fallSpeed = (float)withYMotion;
+            
+            // Get access to EntityPlayer which has Controls
+            EntityPlayer player = entity as EntityPlayer;
+            if (player == null) return;
+
+            // Reset jump cooldown
+            _jumpCooldown = false;
+            
+            // Debug messaging
+            if (Config.DebugMode)
+            {
+                IServerPlayer serverPlayer = entity.World.PlayerByUid(player.PlayerUID) as IServerPlayer;
+                serverPlayer?.SendMessage(GlobalConstants.GeneralChatGroup,
+                    $"[{ModId} DEBUG] Landing detected via OnFallToGround. Velocity: {fallSpeed:F1}",
+                    EnumChatType.Notification);
+            }
+        }
+
         public override void OnGameTick(float deltaTime)
         {
             if (entity.World.Side == EnumAppSide.Client) return; // Server-side logic only
@@ -81,12 +108,6 @@ namespace Vigor.Behaviors
             // This ensures that logic for preventing regeneration is based on actual player intent for this tick,
             // before any server-side control overrides (like setting plr.Controls.Sprint = false due to exhaustion) might alter ServerControls.
             bool physicalSprintKeyHeldThisTick = plr.ServerControls.Sprint;
-            bool physicalJumpKeyHeldThisTick = plr.ServerControls.Jump;
-
-            if (plr.OnGround)
-            {
-                _jumpCooldown = false;
-            }
 
             if (IsExhausted && !_wasExhaustedLastTick) // Just became exhausted
             {
