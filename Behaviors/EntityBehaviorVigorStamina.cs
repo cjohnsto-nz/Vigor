@@ -6,7 +6,6 @@ using System;
 using Vintagestory.API.Server;
 using Vintagestory.API.Config;
 
-
 namespace Vigor.Behaviors
 {
     public class EntityBehaviorVigorStamina : EntityBehavior
@@ -19,10 +18,12 @@ namespace Vigor.Behaviors
         private float _timeSinceLastFatiguingAction = 0f;
         private float _updateCooldown = 0f;
         private bool _jumpCooldown = false;
+        private bool _wasExhaustedLastTick = false; // To detect change in exhaustion state for stat mods
 
-        // --- Stamina Properties ---
-        // These properties get/set values directly from the entity's WatchedAttributes tree.
-        // This is the single source of truth for stamina state.
+        private const string WALK_SPEED_DEBUFF_CODE = "vigorExhaustionWalkSpeedDebuff";
+        private const string JUMP_HEIGHT_DEBUFF_CODE = "vigorExhaustionJumpHeightDebuff";
+        private const float DEFAULT_SINKING_VELOCITY_PER_SECOND = 0.1f; // Placeholder if not in config
+
         public float MaxStamina
         {
             get => StaminaTree?.GetFloat("maxStamina", Config.MaxStamina) ?? Config.MaxStamina;
@@ -47,60 +48,85 @@ namespace Vigor.Behaviors
         {
         }
 
-
-
         public override void OnGameTick(float deltaTime)
         {
-            // One-time initialization on the server
+            if (entity.World.Side == EnumAppSide.Client) return; // Server-side logic only
+
             if (StaminaTree == null)
             {
                 entity.WatchedAttributes.SetAttribute(Name, new TreeAttribute());
                 MaxStamina = Config.MaxStamina;
                 CurrentStamina = MaxStamina;
                 IsExhausted = false;
+                _wasExhaustedLastTick = false;
                 MarkDirty();
-                Logger.Warning($"[{ModId}] Initialized VigorStamina attributes for entity {entity.EntityId}. DebugMode: {Config.DebugMode}");
-                return; // Do nothing else on this tick
+                Logger.Notification($"[{ModId}] Initialized VigorStamina attributes for entity {entity.EntityId}. DebugMode: {Config.DebugMode}");
+                return;
             }
 
-            if (entity.World.Side == EnumAppSide.Client) return;
             if (entity is not EntityPlayer plr || plr.Player?.WorldData.CurrentGameMode == EnumGameMode.Creative)
             {
                 return;
             }
 
-            // Reset jump cooldown when player is on the ground
             if (plr.OnGround)
             {
                 _jumpCooldown = false;
             }
 
-            // --- Exhaustion Effects ---
+            if (IsExhausted && !_wasExhaustedLastTick) // Just became exhausted
+            {
+                // Apply walk speed debuff
+                // Assuming Config.ExhaustionWalkSpeedMultiplier is the desired final speed (e.g., 0.5 for 50% speed)
+                // If stat is additive percentage (e.g. -0.5 for -50% speed)
+                float walkSpeedDebuffValue = -(1.0f - Config.ExhaustionWalkSpeedMultiplier);
+                // Ensure the reduction doesn't go beyond -1 (which would be -100% speed, or 0 speed)
+                // and also doesn't result in a speed increase if multiplier is > 1 by mistake.
+                if (Config.ExhaustionWalkSpeedMultiplier < 0) walkSpeedDebuffValue = 0; // Prevent speed increase from negative multiplier
+                else if (Config.ExhaustionWalkSpeedMultiplier >= 1.0f) walkSpeedDebuffValue = 0; // Prevent speed increase, effectively no change or slight reduction if base is not exactly 0 for 'no effect'
+                else walkSpeedDebuffValue = Math.Max(-0.99f, -(1.0f - Config.ExhaustionWalkSpeedMultiplier)); // Cap at -99% speed reduction
+
+                plr.Stats.Set("walkspeed", WALK_SPEED_DEBUFF_CODE, walkSpeedDebuffValue, false);
+                if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Applied walk speed debuff (Category: walkspeed). TargetFactor: {Config.ExhaustionWalkSpeedMultiplier}, AppliedValue: {walkSpeedDebuffValue:F2}", EnumChatType.Notification);
+
+                // Apply jump height debuff
+                plr.Stats.Set("jumpheight", JUMP_HEIGHT_DEBUFF_CODE, Config.ExhaustionJumpPowerMultiplier, false);
+                if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Applied jump height debuff. Value: {Config.ExhaustionJumpPowerMultiplier}", EnumChatType.Notification);
+            }
+            else if (!IsExhausted && _wasExhaustedLastTick) // Just recovered from exhaustion
+            {
+                // Remove walk speed debuff
+                plr.Stats.Remove("walkspeed", WALK_SPEED_DEBUFF_CODE);
+                if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Removed walk speed debuff (Category: walkspeed).", EnumChatType.Notification);
+
+                // Remove jump height debuff
+                plr.Stats.Remove("jumpheight", JUMP_HEIGHT_DEBUFF_CODE);
+                if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Removed jump height debuff.", EnumChatType.Notification);
+            }
+            _wasExhaustedLastTick = IsExhausted;
+
             if (IsExhausted)
             {
                 plr.Controls.Sprint = false;
                 plr.Controls.Jump = false;
+
                 if (plr.FeetInLiquid)
                 {
-                    // Apply a downward force to simulate sinking
-                    plr.Pos.Motion.Y -= Config.SinkingVelocity;
+                    plr.Pos.Motion.Y -= DEFAULT_SINKING_VELOCITY_PER_SECOND * deltaTime;
                 }
             }
 
             _timeSinceLastFatiguingAction += deltaTime;
             _updateCooldown -= deltaTime;
 
-            // --- Determine Player Actions for Stamina Calculation ---
-            // Note: We use the potentially modified controls here. If exhausted, sprint/jump will be false.
-            bool isSprinting = plr.Controls.Sprint && (plr.Controls.Forward || plr.Controls.Backward || plr.Controls.Left || plr.Controls.Right) && !plr.Controls.Sneak;
+            bool isSprinting = plr.Controls.Sprint && (plr.Controls.Forward || plr.Controls.Backward || plr.Controls.Left || plr.Controls.Right) && !plr.Controls.Sneak && !IsExhausted;
             bool isSwimming = plr.FeetInLiquid;
-            bool isJumping = plr.Controls.Jump && !_jumpCooldown && plr.OnGround;
+            bool isJumping = plr.Controls.Jump && !_jumpCooldown && plr.OnGround && !IsExhausted;
 
             bool fatiguingActionThisTick = false;
             float staminaBefore = CurrentStamina;
             bool exhaustedBefore = IsExhausted;
 
-            // --- Stamina Depletion ---
             if (isSprinting || (isSwimming && !IsExhausted))
             {
                 float costPerSecond = 0f;
@@ -110,11 +136,11 @@ namespace Vigor.Behaviors
                 fatiguingActionThisTick = true;
             }
 
-            if (isJumping) // isJumping is only true if not exhausted
+            if (isJumping)
             {
                 CurrentStamina -= Config.JumpStaminaCost;
                 fatiguingActionThisTick = true;
-                _jumpCooldown = true; // Prevent continuous cost
+                _jumpCooldown = true;
             }
 
             if (fatiguingActionThisTick)
@@ -122,52 +148,42 @@ namespace Vigor.Behaviors
                 _timeSinceLastFatiguingAction = 0f;
             }
 
-            // --- Update Exhaustion State (Post-Depletion) ---
             if (!exhaustedBefore && CurrentStamina <= Config.StaminaExhaustionThreshold)
             {
                 CurrentStamina = Config.StaminaExhaustionThreshold;
                 IsExhausted = true;
-                if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Player EXHAUSTED.", EnumChatType.Notification);
+                if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Player EXHAUSTED. CurrentStamina: {CurrentStamina:F2}", EnumChatType.Notification);
             }
 
-            // --- Stamina Regeneration & Exhaustion Recovery ---
-            // Check raw player input to see if they are *trying* to perform an action.
-            bool tryingToSprint = plr.ServerControls.Sprint && (plr.ServerControls.Forward || plr.ServerControls.Backward || plr.ServerControls.Left || plr.ServerControls.Right);
-            bool isTryingToPerformAction = tryingToSprint || isSwimming;
+            bool tryingToSprintRaw = plr.ServerControls.Sprint && (plr.ServerControls.Forward || plr.ServerControls.Backward || plr.ServerControls.Left || plr.ServerControls.Right) && !plr.ServerControls.Sneak;
+            bool isTryingToPerformFatiguingAction = tryingToSprintRaw || (plr.FeetInLiquid && (plr.ServerControls.Forward || plr.ServerControls.Backward || plr.ServerControls.Left || plr.ServerControls.Right || plr.ServerControls.Jump));
 
-            if (!fatiguingActionThisTick && !isTryingToPerformAction)
+            if (!fatiguingActionThisTick && !isTryingToPerformFatiguingAction)
             {
                 if (IsExhausted)
                 {
-                    // Recovering from exhaustion
-                    CurrentStamina += Config.StaminaRegenRatePerSecond * deltaTime;
-                    if (CurrentStamina >= MaxStamina * Config.StaminaRecoveryDebounceThreshold)
+                    CurrentStamina += Config.StaminaGainPerSecond * deltaTime;
+                    if (CurrentStamina >= Config.StaminaRequiredToRecover)
                     {
                         IsExhausted = false;
-                        if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Player RECOVERED from exhaustion.", EnumChatType.Notification);
+                        if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Player RECOVERED from exhaustion. CurrentStamina: {CurrentStamina:F2}", EnumChatType.Notification);
                     }
                 }
-                else if (_timeSinceLastFatiguingAction >= Config.StaminaRegenDelaySeconds)
+                else if (_timeSinceLastFatiguingAction >= Config.StaminaLossCooldownSeconds)
                 {
-                    // Normal stamina regeneration
-                    CurrentStamina += Config.StaminaRegenRatePerSecond * deltaTime;
+                    CurrentStamina += Config.StaminaGainPerSecond * deltaTime;
                 }
             }
 
-            // Clamp stamina to max
             if (CurrentStamina > MaxStamina) CurrentStamina = MaxStamina;
+            if (CurrentStamina < 0) CurrentStamina = 0;
 
-            // --- Network Sync ---
             bool staminaChanged = Math.Abs(staminaBefore - CurrentStamina) > 0.001f;
             bool exhaustionChanged = exhaustedBefore != IsExhausted;
 
             if (staminaChanged || exhaustionChanged)
             {
-                if (exhaustionChanged || _updateCooldown <= 0)
-                {
-                    MarkDirty();
-                    _updateCooldown = Config.StaminaSyncIntervalSeconds;
-                }
+                MarkDirty();
             }
         }
 
