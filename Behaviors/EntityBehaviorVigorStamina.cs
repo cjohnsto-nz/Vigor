@@ -178,9 +178,9 @@ namespace Vigor.Behaviors
                 costPerSecond += Config.SprintStaminaCostPerSecond;
             }
 
-            if (isSwimming && !IsExhausted) // Potentially apply swim cost if in water and not exhausted
+            if (isSwimming && !plr.OnGround) // Potentially apply swim cost if in water and not exhausted
             {
-                if (!isPlayerIdle && !plr.OnGround) // Apply cost only if NOT idle or NOT on ground
+                if (!isPlayerIdle) // Apply cost only if NOT idle or NOT on ground
                 {
                     costPerSecond += Config.SwimStaminaCostPerSecond;
                     if (Config.DebugMode && _lastLoggedSwimCostSkippedState == true)

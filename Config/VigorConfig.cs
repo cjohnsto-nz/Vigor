@@ -7,7 +7,7 @@ namespace Vigor.Config
 
         // Stamina Mechanics
         public float MaxStamina { get; set; } = 150f;
-        public float StaminaGainPerSecond { get; set; } = 7.5f; // Points per second
+        public float StaminaGainPerSecond { get; set; } = 12.5f; // Points per second
         public float StaminaLossCooldownSeconds { get; set; } = 1f; // Delay after exertion before regen starts
         public float StaminaExhaustionThreshold { get; set; } = 0f; // Stamina level at which player is exhausted
         public float StaminaRequiredToRecover { get; set; } = 50f; // Stamina points needed to recover from exhaustion
@@ -19,7 +19,7 @@ namespace Vigor.Config
         // --- Action Costs ---
         public float SprintStaminaCostPerSecond { get; set; } = 10f;
         public float SwimStaminaCostPerSecond { get; set; } = 10f;
-        public float JumpStaminaCost { get; set; } = 5f;
+        public float JumpStaminaCost { get; set; } = 10f;
         
         // --- Exhaustion Effects ---
         public float ExhaustionWalkSpeedMultiplier { get; set; } = 0.5f; // Walking slower when exhausted (0.5 = 50% speed)
