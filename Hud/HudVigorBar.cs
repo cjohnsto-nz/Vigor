@@ -11,7 +11,7 @@ namespace Vigor.Hud
         public HudVigorBar(ICoreClientAPI capi) : base(capi)
         {
             ComposeGuis();
-            capi.Event.RegisterGameTickListener(OnGameTick, 20);
+            capi.Event.RegisterGameTickListener(OnGameTick, 10);
         }
 
         public override void OnOwnPlayerDataReceived()
@@ -36,7 +36,7 @@ namespace Vigor.Hud
             var maxStamina = staminaTree.GetFloat("maxStamina");
             var isExhausted = staminaTree.GetBool("isExhausted");
 
-            UpdateVigor(currentStamina, maxStamina, isExhausted);
+            UpdateVigor(currentStamina, maxStamina, isExhausted, maxStamina);
         }
 
         private void ComposeGuis()
@@ -46,12 +46,12 @@ namespace Vigor.Hud
             {
                 Alignment = EnumDialogArea.CenterBottom,
                 BothSizing = ElementSizing.Fixed,
-                fixedWidth = 210,
-                fixedHeight = 40
-            }.WithFixedAlignmentOffset(0, -60); // Reset X offset
+                fixedWidth = 348,
+                fixedHeight = 20
+            }.WithFixedAlignmentOffset(249, -85); // Reset X offset
 
             // The specific bounds for the statbar *within* the container
-            ElementBounds statbarBounds = ElementBounds.Fixed(0, 5, 210, 35);
+            ElementBounds statbarBounds = ElementBounds.Fixed(0, 5, 348, 10);
             double[] staminaBarColor = { 0.85, 0.65, 0, 0.9 };
 
             // 1. Create the main composer with the overall dialogBounds
@@ -69,12 +69,13 @@ namespace Vigor.Hud
             TryOpen();
         }
 
-        public void UpdateVigor(float current, float max, bool isExhausted)
+        public void UpdateVigor(float current, float max, bool isExhausted, float maxStamina)
         {
             if (_staminaStatbar == null) return;
 
             _staminaStatbar.SetValues(current, 0, max);
             _staminaStatbar.ShouldFlash = isExhausted;
+            _staminaStatbar.SetLineInterval(maxStamina / 25);
         }
 
         public override bool TryClose() => false;

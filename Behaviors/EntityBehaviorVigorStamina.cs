@@ -1,6 +1,7 @@
 using Vintagestory.API.Common;
 using Vintagestory.API.Common.Entities;
 using Vintagestory.API.Datastructures;
+using Vintagestory.API.MathTools; // Corrected namespace for Vec3f and other math utilities
 using Vigor.Config;
 using System;
 using Vintagestory.API.Server;
@@ -23,9 +24,10 @@ namespace Vigor.Behaviors
         private bool? _lastLoggedIdleBonusState = null; // To prevent log spam for idle bonus
         private bool? _lastLoggedSwimCostSkippedState = null; // To prevent log spam for swim cost skip
         private bool _wasOverallRegenPreventedLastTick = false; // Tracks if regen was prevented by any means last tick for debug logging
+        private bool _isCurrentlySinkingLogged = false; // To prevent log spam for sinking state
 
         private const string WALK_SPEED_DEBUFF_CODE = "vigorExhaustionWalkSpeedDebuff";
-        private const float DEFAULT_SINKING_VELOCITY_PER_SECOND = 0.1f; // Placeholder if not in config
+        // private const float DEFAULT_SINKING_VELOCITY_PER_SECOND = 0.1f; // Replaced by ExhaustedSinkVelocityY config
 
         public float MaxStamina
         {
@@ -114,9 +116,35 @@ namespace Vigor.Behaviors
                 // plr.Controls.Sprint = false; // Removed: Allow continued (debuffed) sprint attempts
                 // plr.Controls.Jump = false; // Removed: Allow jumps during exhaustion to incur stamina cost
 
-                if (plr.FeetInLiquid)
+                if (plr.FeetInLiquid && !plr.OnGround)
                 {
-                    plr.Pos.Motion.Y -= DEFAULT_SINKING_VELOCITY_PER_SECOND * deltaTime;
+                    // Apply sinking effect only if in liquid and not on ground
+                    plr.ServerPos.Motion.Y = Config.ExhaustedSinkVelocityY;
+                    if (Config.DebugMode && !_isCurrentlySinkingLogged)
+                    {
+                        (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] SINKING STARTED (Not OnGround). Motion.Y set to: {Config.ExhaustedSinkVelocityY}", EnumChatType.Notification);
+                        _isCurrentlySinkingLogged = true;
+                    }
+                }
+                else if (plr.FeetInLiquid && plr.OnGround && !_isCurrentlySinkingLogged) // In liquid but on ground, log once if debug mode is on
+                {
+                    if (Config.DebugMode)
+                    {
+                         (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Exhausted in water but OnGround. Sinking not applied.", EnumChatType.Notification);
+                        // We can set _isCurrentlySinkingLogged = true here if we don't want this message to repeat
+                        // For now, let it repeat if the state flip-flops to see if OnGround is stable
+                    }
+                }
+                else // Not exhausted or not in liquid, but was sinking
+                {
+                    if (_isCurrentlySinkingLogged) // Was sinking, now conditions not met
+                    {
+                        if (Config.DebugMode)
+                        {
+                            (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] SINKING STOPPED (no longer exhausted or not in liquid).", EnumChatType.Notification);
+                        }
+                        _isCurrentlySinkingLogged = false;
+                    }
                 }
             }
 
@@ -190,6 +218,7 @@ namespace Vigor.Behaviors
                 IsExhausted = true;
             }
 
+
             // --- Stamina Regeneration & Exhaustion Recovery ---
 
             // Determine if player is *attempting* actions that should prevent regeneration, based on cached physical inputs.
@@ -227,6 +256,8 @@ namespace Vigor.Behaviors
             if (!overallRegenPreventedThisTick)
             {
                 float actualStaminaGainPerSecond = Config.StaminaGainPerSecond;
+                float clampedDeltaTime = Math.Min(deltaTime, 0.2f); // Cap deltaTime at 0.2s (5 FPS) for regen calculation to prevent excessive gain during lag spikes
+
                 // isPlayerIdle is now calculated earlier in the tick
 
                 if (isPlayerIdle)
@@ -249,17 +280,20 @@ namespace Vigor.Behaviors
 
                 if (IsExhausted)
                 {
-                    CurrentStamina += actualStaminaGainPerSecond * deltaTime;
+                    if (CurrentStamina < Config.StaminaRequiredToRecover) CurrentStamina += actualStaminaGainPerSecond * clampedDeltaTime;
+                    // else { IsExhausted already handled by the main check }
+
+                    // Debug message for exhaustion recovery state change;
                     if (CurrentStamina >= Config.StaminaRequiredToRecover)
                     {
                         IsExhausted = false;
                         if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Player RECOVERED from exhaustion. CurrentStamina: {CurrentStamina:F2}", EnumChatType.Notification);
-                         _lastLoggedIdleBonusState = null; // Reset on exhaustion state change to ensure fresh log
+                        _lastLoggedIdleBonusState = null; // Reset on exhaustion state change to ensure fresh log
                     }
                 }
                 else if (_timeSinceLastFatiguingAction >= Config.StaminaLossCooldownSeconds)
                 {
-                    CurrentStamina += actualStaminaGainPerSecond * deltaTime;
+                    CurrentStamina += actualStaminaGainPerSecond * clampedDeltaTime;
                 }
             }
 
