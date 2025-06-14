@@ -20,6 +20,9 @@ if ($vsProcess) {
 }
 
 # --- Build Step ---
+Write-Host "Cleaning project..." -ForegroundColor Cyan
+dotnet clean
+
 Write-Host "Building Vigor project..." -ForegroundColor Cyan
 dotnet build
 
