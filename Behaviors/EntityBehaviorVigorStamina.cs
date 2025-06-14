@@ -19,6 +19,7 @@ namespace Vigor.Behaviors
         private float _updateCooldown = 0f;
         private bool _jumpCooldown = false;
         private bool _wasExhaustedLastTick = false; // To detect change in exhaustion state for stat mods
+        private bool _wasOverallRegenPreventedLastTick = false; // Tracks if regen was prevented by any means last tick for debug logging
 
         private const string WALK_SPEED_DEBUFF_CODE = "vigorExhaustionWalkSpeedDebuff";
         private const string JUMP_HEIGHT_DEBUFF_CODE = "vigorExhaustionJumpHeightDebuff";
@@ -69,6 +70,12 @@ namespace Vigor.Behaviors
                 return;
             }
 
+            // Cache raw player inputs at the beginning of the tick.
+            // This ensures that logic for preventing regeneration is based on actual player intent for this tick,
+            // before any server-side control overrides (like setting plr.Controls.Sprint = false due to exhaustion) might alter ServerControls.
+            bool physicalSprintKeyHeldThisTick = plr.ServerControls.Sprint;
+            bool physicalJumpKeyHeldThisTick = plr.ServerControls.Jump;
+
             if (plr.OnGround)
             {
                 _jumpCooldown = false;
@@ -107,7 +114,7 @@ namespace Vigor.Behaviors
 
             if (IsExhausted)
             {
-                plr.Controls.Sprint = false;
+                // plr.Controls.Sprint = false; // Removed: Allow continued (debuffed) sprint attempts
                 plr.Controls.Jump = false;
 
                 if (plr.FeetInLiquid)
@@ -152,13 +159,34 @@ namespace Vigor.Behaviors
             {
                 CurrentStamina = Config.StaminaExhaustionThreshold;
                 IsExhausted = true;
-                if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Player EXHAUSTED. CurrentStamina: {CurrentStamina:F2}", EnumChatType.Notification);
             }
 
-            bool tryingToSprintRaw = plr.ServerControls.Sprint && (plr.ServerControls.Forward || plr.ServerControls.Backward || plr.ServerControls.Left || plr.ServerControls.Right) && !plr.ServerControls.Sneak;
-            bool isTryingToPerformFatiguingAction = tryingToSprintRaw || (plr.FeetInLiquid && (plr.ServerControls.Forward || plr.ServerControls.Backward || plr.ServerControls.Left || plr.ServerControls.Right || plr.ServerControls.Jump));
+            // --- Stamina Regeneration & Exhaustion Recovery ---
 
-            if (!fatiguingActionThisTick && !isTryingToPerformFatiguingAction)
+            // Determine if player is *attempting* actions that should prevent regeneration, based on cached physical inputs.
+            bool tryingToSprint = physicalSprintKeyHeldThisTick && (plr.ServerControls.Forward || plr.ServerControls.Backward || plr.ServerControls.Left || plr.ServerControls.Right) && !plr.ServerControls.Sneak;
+            bool tryingToMoveInWater = plr.FeetInLiquid && (plr.ServerControls.Forward || plr.ServerControls.Backward || plr.ServerControls.Left || plr.ServerControls.Right || plr.ServerControls.Jump);
+            bool tryingToJump = physicalJumpKeyHeldThisTick && !plr.OnGround && !_jumpCooldown; // Player is holding jump, is in air, and jump isn't on mod cooldown.
+
+            bool activityPreventsRegenerationThisTick = tryingToSprint || tryingToMoveInWater || tryingToJump;
+
+            // Overall condition: Regeneration is prevented if a fatiguing action just happened OR is currently being attempted.
+            bool overallRegenPreventedThisTick = fatiguingActionThisTick || activityPreventsRegenerationThisTick;
+
+            if (Config.DebugMode)
+            {
+                if (overallRegenPreventedThisTick && !_wasOverallRegenPreventedLastTick)
+                {
+                    (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Stamina regen PAUSED (action performed or being attempted).", EnumChatType.Notification);
+                }
+                else if (!overallRegenPreventedThisTick && _wasOverallRegenPreventedLastTick)
+                {
+                    (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Stamina regen RESUMED (no conflicting action/attempt).", EnumChatType.Notification);
+                }
+                _wasOverallRegenPreventedLastTick = overallRegenPreventedThisTick; // Store state for next tick's comparison
+            }
+
+            if (!overallRegenPreventedThisTick)
             {
                 if (IsExhausted)
                 {
