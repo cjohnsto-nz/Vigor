@@ -2,7 +2,7 @@
   "type": "code",
   "modid": "vigor",
   "name": "Vigor",
-  "authors": ["Cascade & USER_NAME"],
+  "authors": ["chrisunfocused"],
   "version": "0.1.0",
   "description": "A streamlined stamina and exhaustion system for Vintage Story.",
   "dependencies": {
