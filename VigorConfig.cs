@@ -5,9 +5,9 @@ namespace Vigor
         public float MaxStamina = 100f;
         public float StaminaGainPerSecond = 10f;
         public float StaminaLossCooldownSeconds = 1.5f;
-        public float SprintStaminaCostPerSecond = 10f;
-        public float SwimStaminaCostPerSecond = 10f;
-        public float JumpStaminaCost = 2f;
+        public float SprintStaminaCostPerSecond = 5f;
+        public float SwimStaminaCostPerSecond = 5f;
+        public float JumpStaminaCost = 5f;
         public float StaminaExhaustionThreshold = 0f;
         public float StaminaRequiredToRecover = 33f;
 
@@ -15,6 +15,7 @@ namespace Vigor
 
         // New settings for exhaustion debuffs
         public float ExhaustionWalkSpeedMultiplier = 0.5f; // e.g., 0.5f for 50% speed
+        public float IdleStaminaRegenMultiplier = 2f; // e.g., 2f for double regen when idle
 
         public static VigorConfig Loaded { get; set; } = new VigorConfig();
     }

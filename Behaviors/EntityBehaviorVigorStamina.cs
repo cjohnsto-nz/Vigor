@@ -18,7 +18,10 @@ namespace Vigor.Behaviors
         private float _timeSinceLastFatiguingAction = 0f;
         private float _updateCooldown = 0f;
         private bool _jumpCooldown = false;
-        private bool _wasExhaustedLastTick = false; // To detect change in exhaustion state for stat mods
+        private bool _wasExhaustedLastTick = false; 
+        // private bool? _lastLoggedExhaustionState = null; // Unused, removed.
+        private bool? _lastLoggedIdleBonusState = null; // To prevent log spam for idle bonus
+        private bool? _lastLoggedSwimCostSkippedState = null; // To prevent log spam for swim cost skip
         private bool _wasOverallRegenPreventedLastTick = false; // Tracks if regen was prevented by any means last tick for debug logging
 
         private const string WALK_SPEED_DEBUFF_CODE = "vigorExhaustionWalkSpeedDebuff";
@@ -69,6 +72,9 @@ namespace Vigor.Behaviors
                 return;
             }
 
+            // Determine if player is effectively stationary. Calculated early for use in both cost and regen logic.
+            bool isPlayerIdle = plr.ServerPos.Motion.LengthSq() < 0.0001; // Threshold for being considered idle (e.g., speed < 0.01 units/sec)
+
             // Cache raw player inputs at the beginning of the tick.
             // This ensures that logic for preventing regeneration is based on actual player intent for this tick,
             // before any server-side control overrides (like setting plr.Controls.Sprint = false due to exhaustion) might alter ServerControls.
@@ -118,18 +124,51 @@ namespace Vigor.Behaviors
             _updateCooldown -= deltaTime;
 
             bool isSprinting = plr.Controls.Sprint && (plr.Controls.Forward || plr.Controls.Backward || plr.Controls.Left || plr.Controls.Right) && !plr.Controls.Sneak && !IsExhausted;
-            bool isSwimming = plr.FeetInLiquid;
+            bool isSwimming = plr.FeetInLiquid; // Player is in water (feet are in liquid)
             bool isJumping = plr.Controls.Jump && !_jumpCooldown && plr.OnGround;
 
             bool fatiguingActionThisTick = false;
             float staminaBefore = CurrentStamina;
             bool exhaustedBefore = IsExhausted;
 
-            if (isSprinting || (isSwimming && !IsExhausted))
+            float costPerSecond = 0f;
+
+            if (isSprinting)
             {
-                float costPerSecond = 0f;
-                if (isSprinting) costPerSecond += Config.SprintStaminaCostPerSecond;
-                if (isSwimming) costPerSecond += Config.SwimStaminaCostPerSecond;
+                costPerSecond += Config.SprintStaminaCostPerSecond;
+            }
+
+            if (isSwimming && !IsExhausted) // Potentially apply swim cost if in water and not exhausted
+            {
+                if (!isPlayerIdle) // Apply cost only if NOT idle
+                {
+                    costPerSecond += Config.SwimStaminaCostPerSecond;
+                    if (Config.DebugMode && _lastLoggedSwimCostSkippedState == true)
+                    {
+                        (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Swim stamina cost RESUMED (player moving in water).", EnumChatType.Notification);
+                        _lastLoggedSwimCostSkippedState = false;
+                    }
+                }
+                else // Player is idle in water, and not exhausted: skip swim cost
+                {
+                    if (Config.DebugMode && _lastLoggedSwimCostSkippedState != true)
+                    {
+                        (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Swim stamina cost PAUSED (player idle in water).", EnumChatType.Notification);
+                        _lastLoggedSwimCostSkippedState = true;
+                    }
+                }
+            }
+            else // Not swimming, or exhausted while swimming: reset the "skipped swim cost" log state
+            {
+                if (Config.DebugMode && _lastLoggedSwimCostSkippedState == true) // Was skipping, now not in a skippable swim context
+                {
+                     (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Swim stamina cost context ended (not swimming or exhausted).", EnumChatType.Notification);
+                }
+                _lastLoggedSwimCostSkippedState = null; 
+            }
+
+            if (costPerSecond > 0)
+            {
                 CurrentStamina -= costPerSecond * deltaTime;
                 fatiguingActionThisTick = true;
             }
@@ -187,18 +226,40 @@ namespace Vigor.Behaviors
 
             if (!overallRegenPreventedThisTick)
             {
+                float actualStaminaGainPerSecond = Config.StaminaGainPerSecond;
+                // isPlayerIdle is now calculated earlier in the tick
+
+                if (isPlayerIdle)
+                {
+                    actualStaminaGainPerSecond *= Config.IdleStaminaRegenMultiplier;
+                    if (Config.DebugMode && actualStaminaGainPerSecond != Config.StaminaGainPerSecond && _lastLoggedIdleBonusState != true) 
+                    {
+                        (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Idle stamina regen bonus ACTIVE. Rate: {actualStaminaGainPerSecond:F2}/s", EnumChatType.Notification);
+                        _lastLoggedIdleBonusState = true;
+                    }
+                }
+                else
+                {
+                    if (Config.DebugMode && _lastLoggedIdleBonusState == true)
+                    {
+                        (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Idle stamina regen bonus INACTIVE.", EnumChatType.Notification);
+                        _lastLoggedIdleBonusState = false;
+                    }
+                }
+
                 if (IsExhausted)
                 {
-                    CurrentStamina += Config.StaminaGainPerSecond * deltaTime;
+                    CurrentStamina += actualStaminaGainPerSecond * deltaTime;
                     if (CurrentStamina >= Config.StaminaRequiredToRecover)
                     {
                         IsExhausted = false;
                         if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Player RECOVERED from exhaustion. CurrentStamina: {CurrentStamina:F2}", EnumChatType.Notification);
+                         _lastLoggedIdleBonusState = null; // Reset on exhaustion state change to ensure fresh log
                     }
                 }
                 else if (_timeSinceLastFatiguingAction >= Config.StaminaLossCooldownSeconds)
                 {
-                    CurrentStamina += Config.StaminaGainPerSecond * deltaTime;
+                    CurrentStamina += actualStaminaGainPerSecond * deltaTime;
                 }
             }
 
