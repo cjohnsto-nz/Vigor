@@ -12,10 +12,14 @@ namespace Vigor.Config
         public float StaminaExhaustionThreshold { get; set; } = 0f; // Stamina level at which player is exhausted
         public float StaminaRecoveryDebounceThreshold { get; set; } = 0.25f;
 
-        public float StaminaSyncIntervalSeconds { get; set; } = 0.2f; // Percentage of MaxStamina (e.g., 0.25 for 25%)
+        public float StaminaSyncIntervalSeconds { get; set; } = 0.25f;
+
+        // --- Mechanics ---
+        public float SinkingVelocity { get; set; } = 0.02f; // Velocity applied per tick when sinking
 
         // Action Costs (per second of action)
         public float SprintStaminaCostPerSecond { get; set; } = 10f;
+        public float JumpStaminaCost { get; set; } = 5f;
         public float SwimStaminaCostPerSecond { get; set; } = 8f;
 
         // Sinking Mechanic
