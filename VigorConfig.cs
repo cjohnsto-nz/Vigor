@@ -9,9 +9,9 @@ namespace Vigor
         public float SwimStaminaCostPerSecond = 3f;
         public float JumpStaminaCost = 5f;
         public float StaminaExhaustionThreshold = 0f;
-        public float StaminaRequiredToRecover = 50f;
+        public float StaminaRequiredToRecover = 33f;
 
-        public bool DebugMode = true; // Enable/disable debug logging
+        public bool DebugMode = false; // Enable/disable debug logging
 
         // New settings for exhaustion debuffs
         public float ExhaustionWalkSpeedMultiplier = 0.5f; // e.g., 0.5f for 50% speed

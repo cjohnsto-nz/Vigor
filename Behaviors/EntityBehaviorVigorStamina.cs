@@ -147,15 +147,6 @@ namespace Vigor.Behaviors
                         _isCurrentlySinkingLogged = true;
                     }
                 }
-                else if (plr.FeetInLiquid && plr.OnGround && !_isCurrentlySinkingLogged) // In liquid but on ground, log once if debug mode is on
-                {
-                    if (Config.DebugMode)
-                    {
-                         (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Exhausted in water but OnGround. Sinking not applied.", EnumChatType.Notification);
-                        // We can set _isCurrentlySinkingLogged = true here if we don't want this message to repeat
-                        // For now, let it repeat if the state flip-flops to see if OnGround is stable
-                    }
-                }
                 else // Not exhausted or not in liquid, but was sinking
                 {
                     if (_isCurrentlySinkingLogged) // Was sinking, now conditions not met
@@ -189,7 +180,7 @@ namespace Vigor.Behaviors
 
             if (isSwimming && !IsExhausted) // Potentially apply swim cost if in water and not exhausted
             {
-                if (!isPlayerIdle) // Apply cost only if NOT idle
+                if (!isPlayerIdle && !plr.OnGround) // Apply cost only if NOT idle or NOT on ground
                 {
                     costPerSecond += Config.SwimStaminaCostPerSecond;
                     if (Config.DebugMode && _lastLoggedSwimCostSkippedState == true)
@@ -198,11 +189,11 @@ namespace Vigor.Behaviors
                         _lastLoggedSwimCostSkippedState = false;
                     }
                 }
-                else // Player is idle in water, and not exhausted: skip swim cost
+                else  // Player is wading or idle, disable regen,    no cost
                 {
                     if (Config.DebugMode && _lastLoggedSwimCostSkippedState != true)
                     {
-                        (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Swim stamina cost PAUSED (player idle in water).", EnumChatType.Notification);
+                        (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Swim stamina cost PAUSED (player idle or wading in water).", EnumChatType.Notification);
                         _lastLoggedSwimCostSkippedState = true;
                     }
                 }
@@ -282,7 +273,7 @@ namespace Vigor.Behaviors
 
                 // isPlayerIdle is now calculated earlier in the tick
 
-                if (isPlayerIdle)
+                if (isPlayerIdle && plr.OnGround && !plr.FeetInLiquid)
                 {
                     actualStaminaGainPerSecond *= Config.IdleStaminaRegenMultiplier;
                     if (Config.DebugMode && actualStaminaGainPerSecond != Config.StaminaGainPerSecond && _lastLoggedIdleBonusState != true) 

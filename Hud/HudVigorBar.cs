@@ -58,7 +58,7 @@ namespace Vigor.Hud
             var composer = capi.Gui.CreateCompo("vigorhud", dialogBounds.FlatCopy());
 
             // 2. Create the statbar element itself, using the *inner* statbarBounds
-            _staminaStatbar = new GuiElementStatbar(composer.Api, statbarBounds, staminaBarColor, false, false);
+            _staminaStatbar = new GuiElementStatbar(composer.Api, statbarBounds, staminaBarColor, true, false);
 
             // 3. Begin child elements within the composer, but add the statbar using its own bounds.
             //    This avoids the self-reference crash.
