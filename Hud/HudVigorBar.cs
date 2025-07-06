@@ -48,7 +48,7 @@ namespace Vigor.Hud
                 BothSizing = ElementSizing.Fixed,
                 fixedWidth = 348,
                 fixedHeight = 20
-            }.WithFixedAlignmentOffset(249, -85); // Reset X offset
+            }.WithFixedAlignmentOffset(249, -89.5); // Reset X offset
 
             // The specific bounds for the statbar *within* the container
             ElementBounds statbarBounds = ElementBounds.Fixed(0, 5, 348, 10);

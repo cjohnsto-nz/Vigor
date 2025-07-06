@@ -7,5 +7,9 @@
   "description": "A streamlined stamina and exhaustion system for Vintage Story.",
   "dependencies": {
     "game": "1.19.0" 
-  }
+  },
+  "side": "Universal",
+  "systems": [
+    { "type": "Vigor.Client.VigorClientSystem" }
+  ]
 }

@@ -25,6 +25,7 @@ namespace Vigor.Behaviors
         private bool? _lastLoggedSwimCostSkippedState = null; // To prevent log spam for swim cost skip
         private bool _wasOverallRegenPreventedLastTick = false; // Tracks if regen was prevented by any means last tick for debug logging
         private bool _isCurrentlySinkingLogged = false; // To prevent log spam for sinking state
+        private const string ATTR_EXHAUSTED_SINKING = "vigor:exhaustedSinking";
 
         private const string WALK_SPEED_DEBUFF_CODE = "vigorExhaustionWalkSpeedDebuff";
         // private const float DEFAULT_SINKING_VELOCITY_PER_SECOND = 0.1f; // Replaced by ExhaustedSinkVelocityY config
@@ -139,11 +140,22 @@ namespace Vigor.Behaviors
 
                 if (plr.FeetInLiquid && !plr.OnGround)
                 {
-                    // Apply sinking effect only if in liquid and not on ground
-                    plr.ServerPos.Motion.Y = Config.ExhaustedSinkVelocityY;
+                    // Aggressively override controls to force sinking and prevent surfacing
+                    plr.Controls.Jump = false;
+                    plr.Controls.Sprint = false;
+                    plr.Controls.WalkVector.X = 0f; // Nullify forward/backward movement intent
+                    plr.Controls.WalkVector.Z = 0f; // Nullify strafing movement intent
+                    plr.Controls.WalkVector.Y = -1f; // Force downward movement intent
+
+                    // Apply a consistent downward nudge to the motion
+                    plr.ServerPos.Motion.Y += Config.ExhaustedSinkNudgeY;
+
+                    // Clamp the downward velocity
+                    plr.ServerPos.Motion.Y = Math.Max(plr.ServerPos.Motion.Y, Config.MaxExhaustedSinkSpeedY);
+
                     if (Config.DebugMode && !_isCurrentlySinkingLogged)
                     {
-                        (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] SINKING STARTED (Not OnGround). Motion.Y set to: {Config.ExhaustedSinkVelocityY}", EnumChatType.Notification);
+                        (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] SINKING STARTED. Controls: Jump=false, Sprint=false, WalkVector=(0, -1, 0). Motion.Y nudged by {Config.ExhaustedSinkNudgeY}, current: {plr.ServerPos.Motion.Y:F3}, capped at {Config.MaxExhaustedSinkSpeedY}", EnumChatType.Notification);
                         _isCurrentlySinkingLogged = true;
                     }
                 }
@@ -316,7 +328,21 @@ namespace Vigor.Behaviors
             bool staminaChanged = Math.Abs(staminaBefore - CurrentStamina) > 0.001f;
             bool exhaustionChanged = exhaustedBefore != IsExhausted;
 
-            if (staminaChanged || exhaustionChanged)
+            bool shouldBeSinking = false;
+            if (plr != null && IsExhausted && (plr.FeetInLiquid && plr.Controls.DetachedMode)) // Check for swimming: in liquid and in detached mode
+            {
+                shouldBeSinking = true;
+            }
+
+            bool previousSinkingState = entity.WatchedAttributes.GetBool(ATTR_EXHAUSTED_SINKING, false);
+            bool sinkingStateChanged = previousSinkingState != shouldBeSinking;
+            if (sinkingStateChanged)
+            {
+                entity.WatchedAttributes.SetBool(ATTR_EXHAUSTED_SINKING, shouldBeSinking);
+                Logger.Notification($"[Vigor Server] Player {entity.GetName()} vigor:exhaustedSinking changed to: {shouldBeSinking}. IsExhausted: {IsExhausted}, FeetInLiquid: {plr?.FeetInLiquid}, Controls.DetachedMode: {plr?.Controls.DetachedMode}");
+            }
+
+            if (staminaChanged || exhaustionChanged || sinkingStateChanged)
             {
                 MarkDirty();
             }

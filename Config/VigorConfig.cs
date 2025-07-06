@@ -23,7 +23,8 @@ namespace Vigor.Config
         
         // --- Exhaustion Effects ---
         public float ExhaustionWalkSpeedMultiplier { get; set; } = 0.5f; // Walking slower when exhausted (0.5 = 50% speed)
-        public float ExhaustedSinkVelocityY { get; set; } = -0.2f; // How fast player sinks when exhausted
+        public float ExhaustedSinkNudgeY { get; set; } = -0.05f; // Small downward velocity nudge per tick when exhausted in water.
+        public float MaxExhaustedSinkSpeedY { get; set; } = -0.5f; // Terminal velocity for sinking when exhausted in water.
 
         // Future: Add more settings as needed, e.g., for specific item effects on stamina
 
