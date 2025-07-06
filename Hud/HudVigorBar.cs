@@ -85,6 +85,7 @@ namespace Vigor.Hud
             // If exhausted, show the threshold. If not, set value to max, which hides it because HideWhenFull is true.
             float recoveryValue = isExhausted ? recoveryThreshold : max;
             _recoveryThresholdStatbar.SetValues(recoveryValue, 0, max);
+            _recoveryThresholdStatbar.SetLineInterval(1500f / max);
         }
 
         public override bool TryClose() => false;
