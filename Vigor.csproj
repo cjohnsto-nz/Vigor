@@ -39,6 +39,10 @@
     </Reference>
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="7.0.0" />
+  </ItemGroup>
+
   <PropertyGroup>
     <!-- Define the name of your mod's output folder -->
     <ModFolderName>Vigor</ModFolderName>
