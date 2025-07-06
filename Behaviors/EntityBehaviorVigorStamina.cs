@@ -232,7 +232,7 @@ namespace Vigor.Behaviors
             bool overallRegenPreventedThisTick = fatiguingActionThisTick || activityPreventsRegenerationThisTick;
 
             // Calculate recovery threshold and gain rate once for both game logic and debug attributes.
-            float modifiedRecoveryThreshold = Config.StaminaRequiredToRecover * _nutritionBonuses.RecoveryThresholdModifier;
+            float modifiedRecoveryThreshold = MaxStamina * Config.StaminaRequiredToRecoverPercent * _nutritionBonuses.RecoveryThresholdModifier;
             float actualStaminaGainPerSecond = 0f;
 
             if (!overallRegenPreventedThisTick)

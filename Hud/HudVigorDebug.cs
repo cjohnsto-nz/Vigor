@@ -118,7 +118,7 @@ namespace Vigor.Hud
                 float maxStamina = staminaTree.GetFloat("calculatedMaxStamina", staminaTree.GetFloat("maxStamina"));
                 float currentStamina = staminaTree.GetFloat("currentStamina");
                 bool isExhausted = staminaTree.GetBool("isExhausted");
-                float recoveryThreshold = staminaTree.GetFloat("debug_recoveryThreshold", config.StaminaRequiredToRecover);
+                float recoveryThreshold = staminaTree.GetFloat("debug_recoveryThreshold");
 
                 sb.AppendLine($"Stamina: {currentStamina:F1} / {maxStamina:F1}");
                 sb.AppendLine($"Exhausted: {isExhausted} (Recovery at > {recoveryThreshold:F1})");

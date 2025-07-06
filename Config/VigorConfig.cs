@@ -5,14 +5,14 @@ namespace Vigor.Config
     public class VigorConfig
     {
         // General Settings
-        public bool DebugMode { get; set; } = true; // Disabled by default
+        public bool DebugMode { get; set; } = false; // Disabled by default
 
         // Stamina Mechanics
         public float MaxStamina { get; set; } = 150f;
         public float StaminaGainPerSecond { get; set; } = 12.5f; // Points per second
         public float StaminaLossCooldownSeconds { get; set; } = 1f; // Delay after exertion before regen starts
         public float StaminaExhaustionThreshold { get; set; } = 0f; // Stamina level at which player is exhausted
-        public float StaminaRequiredToRecover { get; set; } = 50f; // Stamina points needed to recover from exhaustion
+        public float StaminaRequiredToRecoverPercent { get; set; } = 0.4f; // Percentage of max stamina needed to recover from exhaustion (e.g., 0.33 for 33%)
         public float IdleStaminaRegenMultiplier { get; set; } = 2f; // Multiplier for idle regen
         
         // Syncing interval (for client-server updates)
@@ -20,7 +20,7 @@ namespace Vigor.Config
         
         // --- Action Costs ---
         public float SprintStaminaCostPerSecond { get; set; } = 10f;
-        public float SwimStaminaCostPerSecond { get; set; } = 10f;
+        public float SwimStaminaCostPerSecond { get; set; } = 3f;
         public float JumpStaminaCost { get; set; } = 10f;
         
         // --- Exhaustion Effects ---
@@ -34,23 +34,23 @@ namespace Vigor.Config
         // For example, a value of 0.5 means a +50% bonus or a -50% cost reduction at max nutrition.
 
         // Grain effects
-        public float GrainMaxStaminaBonusAtMax { get; set; } = 0.5f; // +50% max stamina
+        public float GrainMaxStaminaBonusAtMax { get; set; } = 0.3f; // +50% max stamina
         public float GrainJumpCostBonusAtMax { get; set; } = 0.2f; // -20% jump cost
 
         // Protein effects
-        public float ProteinRecoveryRateBonusAtMax { get; set; } = 0.5f; // +50% recovery rate
+        public float ProteinRecoveryRateBonusAtMax { get; set; } = 0.3f; // +50% recovery rate
         public float ProteinMaxStaminaBonusAtMax { get; set; } = 0.2f; // +20% max stamina
 
         // Vegetable effects
-        public float VegetableDrainRateBonusAtMax { get; set; } = 0.5f; // -50% drain rate
+        public float VegetableDrainRateBonusAtMax { get; set; } = 0.3f; // -50% drain rate
         public float VegetableRecoveryThresholdBonusAtMax { get; set; } = 0.2f; // -20% recovery threshold
 
         // Dairy effects
-        public float DairyRecoveryThresholdBonusAtMax { get; set; } = 0.5f; // -50% recovery threshold
+        public float DairyRecoveryThresholdBonusAtMax { get; set; } = 0.3f; // -50% recovery threshold
         public float DairyRecoveryRateBonusAtMax { get; set; } = 0.2f; // +20% recovery rate
 
         // Fruit effects
-        public float FruitJumpCostBonusAtMax { get; set; } = 0.5f; // -50% jump cost
+        public float FruitJumpCostBonusAtMax { get; set; } = 0.3f; // -50% jump cost
         public float FruitDrainRateBonusAtMax { get; set; } = 0.2f; // -20% drain rate
         
         // Minimum modifier values (to prevent extreme effects)
