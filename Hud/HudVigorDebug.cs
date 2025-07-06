@@ -12,7 +12,6 @@ namespace Vigor.Hud
     {
         private GuiElementDynamicText _debugText;
         private long _listenerId;
-        private bool _haveDumpedTrees;
 
         public HudVigorDebug(ICoreClientAPI capi) : base(capi)
         {
@@ -57,7 +56,8 @@ namespace Vigor.Hud
         {
             var sb = new StringBuilder();
 
-            if (VigorModSystem.Instance?.CurrentConfig == null)
+            var config = VigorModSystem.Instance?.CurrentConfig;
+            if (config == null)
             {
                 sb.AppendLine("Waiting for config...");
                 _debugText?.SetNewText(sb.ToString());
@@ -71,8 +71,6 @@ namespace Vigor.Hud
                 _debugText?.SetNewText(sb.ToString());
                 return;
             }
-
-            var config = VigorModSystem.Instance.CurrentConfig;
 
             // Nutrition Section
             sb.AppendLine("--- Vigor Nutrition ---");
@@ -116,11 +114,40 @@ namespace Vigor.Hud
             }
             else
             {
-                sb.AppendLine($"Current: {staminaTree.GetFloat("currentStamina"):F1} / {staminaTree.GetFloat("maxStamina"):F1}");
-                sb.AppendLine($"Exhausted: {staminaTree.GetBool("isExhausted")}");
+                float maxStamina = staminaTree.GetFloat("calculatedMaxStamina", staminaTree.GetFloat("maxStamina"));
+                float currentStamina = staminaTree.GetFloat("currentStamina");
+                bool isExhausted = staminaTree.GetBool("isExhausted");
+                float recoveryThreshold = staminaTree.GetFloat("debug_recoveryThreshold", config.StaminaRequiredToRecover);
+
+                sb.AppendLine($"Stamina: {currentStamina:F1} / {maxStamina:F1}");
+                sb.AppendLine($"Exhausted: {isExhausted} (Recovery at > {recoveryThreshold:F1})");
+                sb.AppendLine($"Sinking: {staminaTree.GetBool(EntityBehaviorVigorStamina.ATTR_EXHAUSTED_SINKING)}");
+
+                if (config.DebugMode)
+                {
+                    sb.AppendLine("\n--- Player State (Debug) ---");
+                    sb.AppendLine($"Idle: {staminaTree.GetBool("debug_isIdle")}");
+                    sb.AppendLine($"Sprinting: {staminaTree.GetBool("debug_isSprinting")}");
+                    sb.AppendLine($"Swimming: {staminaTree.GetBool("debug_isSwimming")}");
+                    sb.AppendLine($"Jumping: {staminaTree.GetBool("debug_isJumping")}");
+                    sb.AppendLine($"Fatiguing Action: {staminaTree.GetBool("debug_fatiguingActionThisTick")}");
+                    sb.AppendLine($"Regen Blocked: {staminaTree.GetBool("debug_regenPrevented")}");
+
+                    sb.AppendLine("\n--- Rates & Timers (Debug) ---");
+                    sb.AppendLine($"Cost/sec: {staminaTree.GetFloat("debug_costPerSecond"):F2}");
+                    sb.AppendLine($"Gain/sec: {staminaTree.GetFloat("debug_staminaGainPerSecond"):F2}");
+                    sb.AppendLine($"Time Since Fatigue: {staminaTree.GetFloat("debug_timeSinceFatigue"):F1}s");
+
+                    sb.AppendLine("\n--- Final Modifiers (Debug) ---");
+                    sb.AppendLine($"Max Stamina: {staminaTree.GetFloat("debug_mod_maxStamina"):P0}");
+                    sb.AppendLine($"Recovery Rate: {staminaTree.GetFloat("debug_mod_recoveryRate"):P0}");
+                    sb.AppendLine($"Drain Rate: {staminaTree.GetFloat("debug_mod_drainRate"):P0}");
+                    sb.AppendLine($"Jump Cost: {staminaTree.GetFloat("debug_mod_jumpCost"):P0}");
+                    sb.AppendLine($"Recovery Threshold: {staminaTree.GetFloat("debug_mod_recoveryThreshold"):P0}");
+                }
             }
 
-            _debugText.SetNewText(sb.ToString());
+            _debugText?.SetNewText(sb.ToString());
         }
 
         public override void Dispose()
