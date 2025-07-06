@@ -63,8 +63,12 @@ namespace Vigor.Behaviors
 
         private ITreeAttribute StaminaTree => entity.WatchedAttributes.GetTreeAttribute(Name);
 
+        private float _lastReceivedStamina;
+        private ICoreAPI api;
+
         public EntityBehaviorVigorStamina(Entity entity) : base(entity)
         {
+            api = entity.Api;
             _nutritionBonuses = new VigorNutritionBonuses();
         }
 
@@ -318,20 +322,14 @@ namespace Vigor.Behaviors
 
             bool shouldBeSinking = IsExhausted && isSwimming;
 
-            if (isSwimming && IsExhausted)
+            if (shouldBeSinking)
             {
-                float currentAir = entity.WatchedAttributes.GetFloat("airLevel", entity.GetBehavior<EntityBehaviorHealth>()?.maxAirLevel ?? 10f);
-                float newAir = Math.Max(0, currentAir - (Config.ExhaustedSwimOxygenDebuff * deltaTime));
-                entity.WatchedAttributes.SetFloat("airLevel", newAir);
-            }
+                var oxygenTree = entity.WatchedAttributes.GetTreeAttribute("oxygen");
+                oxygenTree?.SetBool("hasair", false);
 
-            if (Config.DebugMode && shouldBeSinking)
-            {
-                if (!_hasLoggedSwimStats)
+                if (Config.DebugMode)
                 {
-                    var statNames = string.Join(", ", plr.Stats.Select(kvp => kvp.Key));
-                    Logger.Notification("[{0} DEBUG] Player {1} is exhausted and swimming. Available stats: {2}", ModId, plr.PlayerUID, statNames);
-                    _hasLoggedSwimStats = true;
+                    api.Logger.Debug($"Player {plr.Player.PlayerName} has no air due to exhaustion.");
                 }
             }
             else
