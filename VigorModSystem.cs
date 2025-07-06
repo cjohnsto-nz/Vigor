@@ -36,7 +36,16 @@ namespace Vigor
             api.Gui.RegisterDialog(_vigorHud);
             api.Gui.RegisterDialog(_debugHud);
 
+            api.Input.RegisterHotKey("vigordebug", "Vigor: Toggle Debug Info", GlKeys.F8, HotkeyType.GUIOrOtherControls);
+            api.Input.SetHotKeyHandler("vigordebug", OnToggleDebugHud);
+
             if (CurrentConfig.DebugMode) Logger.Notification($"[{ModId}] Client-side systems started.");
+        }
+
+        private bool OnToggleDebugHud(KeyCombination comb)
+        {
+            _debugHud?.Toggle();
+            return true;
         }
 
         public override void StartServerSide(ICoreServerAPI api)

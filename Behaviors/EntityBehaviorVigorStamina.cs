@@ -30,9 +30,7 @@ namespace Vigor.Behaviors
         private bool _wasExhaustedLastTick = false; 
         // private bool? _lastLoggedExhaustionState = null; // Unused, removed.
         private bool? _lastLoggedIdleBonusState = null; // To prevent log spam for idle bonus
-        private bool? _lastLoggedSwimCostSkippedState = null; // To prevent log spam for swim cost skip
         private bool _wasOverallRegenPreventedLastTick = false; // Tracks if regen was prevented by any means last tick for debug logging
-        private bool _isCurrentlySinkingLogged = false; // To prevent log spam for sinking state
         public const string ATTR_EXHAUSTED_SINKING = "vigor:exhaustedSinking";
 
         private const string WALK_SPEED_DEBUFF_CODE = "vigorExhaustionWalkSpeedDebuff";
@@ -220,6 +218,20 @@ namespace Vigor.Behaviors
             bool activityPreventsRegenerationThisTick = tryingToSprint || tryingToMoveInWater;
             bool overallRegenPreventedThisTick = fatiguingActionThisTick || activityPreventsRegenerationThisTick;
 
+            // Calculate recovery threshold and gain rate once for both game logic and debug attributes.
+            float modifiedRecoveryThreshold = Config.StaminaRequiredToRecover * _nutritionBonuses.RecoveryThresholdModifier;
+            float actualStaminaGainPerSecond = 0f;
+
+            if (!overallRegenPreventedThisTick)
+            {
+                actualStaminaGainPerSecond = Config.StaminaGainPerSecond * _nutritionBonuses.RecoveryRateModifier;
+                if (isPlayerIdle && plr.OnGround && !plr.FeetInLiquid)
+                {
+                    actualStaminaGainPerSecond *= Config.IdleStaminaRegenMultiplier;
+                }
+            }
+
+            // --- Debug Logging ---
             if (Config.DebugMode)
             {
                 if (overallRegenPreventedThisTick && !_wasOverallRegenPreventedLastTick)
@@ -234,34 +246,31 @@ namespace Vigor.Behaviors
                     (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Stamina regen RESUMED.", EnumChatType.Notification);
                 }
                 _wasOverallRegenPreventedLastTick = overallRegenPreventedThisTick;
+
+                if (!overallRegenPreventedThisTick)
+                {
+                    if (isPlayerIdle && plr.OnGround && !plr.FeetInLiquid) {
+                        if (_lastLoggedIdleBonusState != true) 
+                        {
+                            (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Idle stamina regen bonus ACTIVE. Rate: {actualStaminaGainPerSecond:F2}/s", EnumChatType.Notification);
+                            _lastLoggedIdleBonusState = true;
+                        }
+                    } else {
+                        if (_lastLoggedIdleBonusState == true)
+                        {
+                            (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Idle stamina regen bonus INACTIVE.", EnumChatType.Notification);
+                            _lastLoggedIdleBonusState = false;
+                        }
+                    }
+                }
             }
 
+            // --- Apply Regeneration/Recovery Logic ---
             if (!overallRegenPreventedThisTick)
             {
-                float actualStaminaGainPerSecond = Config.StaminaGainPerSecond * _nutritionBonuses.RecoveryRateModifier;
                 float clampedDeltaTime = Math.Min(deltaTime, 0.2f);
-
-                if (isPlayerIdle && plr.OnGround && !plr.FeetInLiquid)
-                {
-                    actualStaminaGainPerSecond *= Config.IdleStaminaRegenMultiplier;
-                    if (Config.DebugMode && _lastLoggedIdleBonusState != true) 
-                    {
-                        (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Idle stamina regen bonus ACTIVE. Rate: {actualStaminaGainPerSecond:F2}/s", EnumChatType.Notification);
-                        _lastLoggedIdleBonusState = true;
-                    }
-                }
-                else
-                {
-                    if (Config.DebugMode && _lastLoggedIdleBonusState == true)
-                    {
-                        (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Idle stamina regen bonus INACTIVE.", EnumChatType.Notification);
-                        _lastLoggedIdleBonusState = false;
-                    }
-                }
-
                 if (IsExhausted)
                 {
-                    float modifiedRecoveryThreshold = Config.StaminaRequiredToRecover * _nutritionBonuses.RecoveryThresholdModifier;
                     if (CurrentStamina < modifiedRecoveryThreshold)
                     {
                         CurrentStamina += actualStaminaGainPerSecond * clampedDeltaTime;
@@ -292,33 +301,29 @@ namespace Vigor.Behaviors
                 entity.WatchedAttributes.SetBool(ATTR_EXHAUSTED_SINKING, shouldBeSinking);
             }
 
+            // --- Update Debug Watched Attributes ---
             bool debugStateChanged = false;
-            if (Config.DebugMode)
-            {
-                // States
-                debugStateChanged |= SetDebugBool("debug_isIdle", isPlayerIdle);
-                debugStateChanged |= SetDebugBool("debug_isSprinting", isSprinting);
-                debugStateChanged |= SetDebugBool("debug_isSwimming", isSwimming);
-                debugStateChanged |= SetDebugBool("debug_isJumping", isJumping);
-                debugStateChanged |= SetDebugBool("debug_fatiguingActionThisTick", fatiguingActionThisTick);
-                debugStateChanged |= SetDebugBool("debug_regenPrevented", overallRegenPreventedThisTick);
+            // States
+            debugStateChanged |= SetDebugBool("debug_isIdle", isPlayerIdle);
+            debugStateChanged |= SetDebugBool("debug_isSprinting", isSprinting);
+            debugStateChanged |= SetDebugBool("debug_isSwimming", isSwimming);
+            debugStateChanged |= SetDebugBool("debug_isJumping", isJumping);
+            debugStateChanged |= SetDebugBool("debug_fatiguingActionThisTick", fatiguingActionThisTick);
+            debugStateChanged |= SetDebugBool("debug_regenPrevented", overallRegenPreventedThisTick);
 
-                // Values
-                float modifiedRecoveryThreshold = Config.StaminaRequiredToRecover * _nutritionBonuses.RecoveryThresholdModifier;
-                float actualStaminaGainPerSecond = Config.StaminaGainPerSecond * _nutritionBonuses.RecoveryRateModifier * (isPlayerIdle && plr.OnGround && !plr.FeetInLiquid ? Config.IdleStaminaRegenMultiplier : 1f);
-                
-                debugStateChanged |= SetDebugFloat("debug_recoveryThreshold", modifiedRecoveryThreshold);
-                debugStateChanged |= SetDebugFloat("debug_staminaGainPerSecond", overallRegenPreventedThisTick ? 0 : actualStaminaGainPerSecond);
-                debugStateChanged |= SetDebugFloat("debug_costPerSecond", costPerSecond);
-                debugStateChanged |= SetDebugFloat("debug_timeSinceFatigue", _timeSinceLastFatiguingAction);
+            // Values
+            debugStateChanged |= SetDebugFloat("debug_recoveryThreshold", modifiedRecoveryThreshold);
+            debugStateChanged |= SetDebugFloat("debug_staminaGainPerSecond", actualStaminaGainPerSecond);
+            debugStateChanged |= SetDebugFloat("debug_costPerSecond", costPerSecond);
+            debugStateChanged |= SetDebugFloat("debug_timeSinceFatigue", _timeSinceLastFatiguingAction);
 
-                // Final Modifiers
-                debugStateChanged |= SetDebugFloat("debug_mod_maxStamina", _nutritionBonuses.MaxStaminaModifier);
-                debugStateChanged |= SetDebugFloat("debug_mod_recoveryRate", _nutritionBonuses.RecoveryRateModifier);
-                debugStateChanged |= SetDebugFloat("debug_mod_drainRate", _nutritionBonuses.DrainRateModifier);
-                debugStateChanged |= SetDebugFloat("debug_mod_jumpCost", _nutritionBonuses.JumpCostModifier);
-                debugStateChanged |= SetDebugFloat("debug_mod_recoveryThreshold", _nutritionBonuses.RecoveryThresholdModifier);
-            }
+            // Final Modifiers
+            debugStateChanged |= SetDebugFloat("debug_mod_maxStamina", _nutritionBonuses.MaxStaminaModifier);
+            debugStateChanged |= SetDebugFloat("debug_mod_recoveryRate", _nutritionBonuses.RecoveryRateModifier);
+            debugStateChanged |= SetDebugFloat("debug_mod_drainRate", _nutritionBonuses.DrainRateModifier);
+            debugStateChanged |= SetDebugFloat("debug_mod_jumpCost", _nutritionBonuses.JumpCostModifier);
+            debugStateChanged |= SetDebugFloat("debug_mod_recoveryThreshold", _nutritionBonuses.RecoveryThresholdModifier);
+            
 
             if (staminaChanged || exhaustionChanged || maxStaminaUpdated || previousSinkingState != shouldBeSinking || debugStateChanged)
             {

@@ -1,9 +1,11 @@
+using Newtonsoft.Json;
+
 namespace Vigor.Config
 {
     public class VigorConfig
     {
         // General Settings
-        public bool DebugMode { get; set; } = true; // Disabled by default
+        public bool DebugMode { get; set; } = false; // Disabled by default
 
         // Stamina Mechanics
         public float MaxStamina { get; set; } = 150f;
@@ -27,27 +29,28 @@ namespace Vigor.Config
         public float MaxExhaustedSinkSpeedY { get; set; } = -0.5f; // Terminal velocity for sinking when exhausted in water.
         
         // --- Nutrition Modifiers ---
-        // Primary and secondary effects for each nutrition type
-        
+        // These values represent the total bonus percentage when a nutrition bar is full (at 1500).
+        // For example, a value of 0.5 means a +50% bonus or a -50% cost reduction at max nutrition.
+
         // Grain effects
-        public float GrainMaxStaminaModifierPerPoint { get; set; } = 0.005f; // +50% at 100% nutrition
-        public float GrainJumpCostModifierPerPoint { get; set; } = 0.002f; // -20% at 100% nutrition
-        
+        public float GrainMaxStaminaBonusAtMax { get; set; } = 0.5f; // +50% max stamina
+        public float GrainJumpCostBonusAtMax { get; set; } = 0.2f; // -20% jump cost
+
         // Protein effects
-        public float ProteinRecoveryRateModifierPerPoint { get; set; } = 0.005f; // +50% at 100% nutrition
-        public float ProteinMaxStaminaModifierPerPoint { get; set; } = 0.002f; // +20% at 100% nutrition
-        
+        public float ProteinRecoveryRateBonusAtMax { get; set; } = 0.5f; // +50% recovery rate
+        public float ProteinMaxStaminaBonusAtMax { get; set; } = 0.2f; // +20% max stamina
+
         // Vegetable effects
-        public float VegetableDrainRateModifierPerPoint { get; set; } = 0.005f; // -50% at 100% nutrition
-        public float VegetableRecoveryThresholdModifierPerPoint { get; set; } = 0.002f; // -20% at 100% nutrition
-        
+        public float VegetableDrainRateBonusAtMax { get; set; } = 0.5f; // -50% drain rate
+        public float VegetableRecoveryThresholdBonusAtMax { get; set; } = 0.2f; // -20% recovery threshold
+
         // Dairy effects
-        public float DairyRecoveryThresholdModifierPerPoint { get; set; } = 0.005f; // -50% at 100% nutrition
-        public float DairyRecoveryRateModifierPerPoint { get; set; } = 0.002f; // +20% at 100% nutrition
-        
+        public float DairyRecoveryThresholdBonusAtMax { get; set; } = 0.5f; // -50% recovery threshold
+        public float DairyRecoveryRateBonusAtMax { get; set; } = 0.2f; // +20% recovery rate
+
         // Fruit effects
-        public float FruitJumpCostModifierPerPoint { get; set; } = 0.005f; // -50% at 100% nutrition
-        public float FruitDrainRateModifierPerPoint { get; set; } = 0.002f; // -20% at 100% nutrition
+        public float FruitJumpCostBonusAtMax { get; set; } = 0.5f; // -50% jump cost
+        public float FruitDrainRateBonusAtMax { get; set; } = 0.2f; // -20% drain rate
         
         // Minimum modifier values (to prevent extreme effects)
         public float MinDrainRateModifier { get; set; } = 0.1f; // Minimum 10% of normal drain rate

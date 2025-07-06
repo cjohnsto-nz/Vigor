@@ -53,6 +53,9 @@ if (Test-Path $DestinationDir) {
 Write-Host "Copying new version from '$SourceDir'"
 Copy-Item -Path $SourceDir -Destination $ModsDir -Recurse
 
+# Delete old config
+Remove-Item -Path "C:\Users\chris\AppData\Roaming\VintagestoryData\ModConfig\vigor.json" -Force
+
 # --- Post-Deploy: Start Game ---
 Write-Host "`nDeployment COMPLETE. Launching Vintage Story..." -ForegroundColor Green
 Start-Process -FilePath $VSExePath

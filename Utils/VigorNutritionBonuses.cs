@@ -11,6 +11,8 @@ namespace Vigor.Utils
     /// </summary>
     public class VigorNutritionBonuses
     {
+        private const float MAX_NUTRITION_VALUE = 1500f;
+
         // --- Cached Modifier Values ---
         public float MaxStaminaModifier { get; private set; }
         public float RecoveryRateModifier { get; private set; }
@@ -27,19 +29,19 @@ namespace Vigor.Utils
         {
             if (player == null || config == null) return;
 
-            // Read vanilla nutrition values
-            float fruit = GetNutritionValue(player, "fruit");
-            float grain = GetNutritionValue(player, "grain");
-            float protein = GetNutritionValue(player, "protein");
-            float vegetable = GetNutritionValue(player, "vegetable");
-            float dairy = GetNutritionValue(player, "dairy");
+            // Read vanilla nutrition values and normalize them to a 0-1 scale.
+            float fruit = GetNutritionValue(player, "fruit") / MAX_NUTRITION_VALUE;
+            float grain = GetNutritionValue(player, "grain") / MAX_NUTRITION_VALUE;
+            float protein = GetNutritionValue(player, "protein") / MAX_NUTRITION_VALUE;
+            float vegetable = GetNutritionValue(player, "vegetable") / MAX_NUTRITION_VALUE;
+            float dairy = GetNutritionValue(player, "dairy") / MAX_NUTRITION_VALUE;
 
-            // Calculate and cache each modifier
-            MaxStaminaModifier = 1f + (grain * config.GrainMaxStaminaModifierPerPoint) + (protein * config.ProteinMaxStaminaModifierPerPoint);
-            RecoveryRateModifier = 1f + (protein * config.ProteinRecoveryRateModifierPerPoint) + (dairy * config.DairyRecoveryRateModifierPerPoint);
-            DrainRateModifier = Math.Max(config.MinDrainRateModifier, 1f - (vegetable * config.VegetableDrainRateModifierPerPoint) - (fruit * config.FruitDrainRateModifierPerPoint));
-            JumpCostModifier = Math.Max(config.MinJumpCostModifier, 1f - (fruit * config.FruitJumpCostModifierPerPoint) - (grain * config.GrainJumpCostModifierPerPoint));
-            RecoveryThresholdModifier = Math.Max(config.MinRecoveryThresholdModifier, 1f - (dairy * config.DairyRecoveryThresholdModifierPerPoint) - (vegetable * config.VegetableRecoveryThresholdModifierPerPoint));
+            // Calculate and cache each modifier using the normalized values and the total bonus from config.
+            MaxStaminaModifier = 1f + (grain * config.GrainMaxStaminaBonusAtMax) + (protein * config.ProteinMaxStaminaBonusAtMax);
+            RecoveryRateModifier = 1f + (protein * config.ProteinRecoveryRateBonusAtMax) + (dairy * config.DairyRecoveryRateBonusAtMax);
+            DrainRateModifier = Math.Max(config.MinDrainRateModifier, 1f - (vegetable * config.VegetableDrainRateBonusAtMax) - (fruit * config.FruitDrainRateBonusAtMax));
+            JumpCostModifier = Math.Max(config.MinJumpCostModifier, 1f - (fruit * config.FruitJumpCostBonusAtMax) - (grain * config.GrainJumpCostBonusAtMax));
+            RecoveryThresholdModifier = Math.Max(config.MinRecoveryThresholdModifier, 1f - (dairy * config.DairyRecoveryThresholdBonusAtMax) - (vegetable * config.VegetableRecoveryThresholdBonusAtMax));
         }
 
         /// <summary>

@@ -33,7 +33,7 @@ namespace Vigor.Hud
 
         private void ComposeDialog()
         {
-            ElementBounds textBounds = ElementBounds.Fixed(0, 20, 300, 200);
+            ElementBounds textBounds = ElementBounds.Fixed(0, 20, 300, 600);
             ElementBounds bgBounds = ElementBounds.Fill.WithFixedPadding(GuiStyle.ElementToDialogPadding);
             bgBounds.BothSizing = ElementSizing.FitToChildren;
             bgBounds.WithChildren(textBounds);
@@ -49,7 +49,7 @@ namespace Vigor.Hud
             Composers["vigorinfodialog"] = composer.Compose();
             _debugText = Composers["vigorinfodialog"].GetDynamicText("debugtext");
 
-            TryOpen();
+            if (VigorModSystem.Instance.CurrentConfig.DebugMode) TryOpen();
         }
 
         private void UpdateDebugText()
@@ -81,27 +81,28 @@ namespace Vigor.Hud
             }
             else
             {
+                const float NUTRITION_MAX = 1500f;
                 float protein = hungerTree.GetFloat("proteinLevel", 0);
                 float fruit = hungerTree.GetFloat("fruitLevel", 0);
                 float vegetable = hungerTree.GetFloat("vegetableLevel", 0);
                 float dairy = hungerTree.GetFloat("dairyLevel", 0);
                 float grain = hungerTree.GetFloat("grainLevel", 0);
 
-                float grainMaxStamMod = grain * config.GrainMaxStaminaModifierPerPoint;
-                float grainJumpCostMod = grain * config.GrainJumpCostModifierPerPoint;
-                float proteinRecoveryMod = protein * config.ProteinRecoveryRateModifierPerPoint;
-                float proteinMaxStamMod = protein * config.ProteinMaxStaminaModifierPerPoint;
-                float vegDrainMod = vegetable * config.VegetableDrainRateModifierPerPoint;
-                float vegRecoveryThreshMod = vegetable * config.VegetableRecoveryThresholdModifierPerPoint;
-                float dairyRecoveryThreshMod = dairy * config.DairyRecoveryThresholdModifierPerPoint;
-                float dairyRecoveryRateMod = dairy * config.DairyRecoveryRateModifierPerPoint;
-                float fruitJumpCostMod = fruit * config.FruitJumpCostModifierPerPoint;
-                float fruitDrainMod = fruit * config.FruitDrainRateModifierPerPoint;
+                float grainMaxStamMod = (grain / NUTRITION_MAX) * config.GrainMaxStaminaBonusAtMax;
+                float grainJumpCostMod = (grain / NUTRITION_MAX) * config.GrainJumpCostBonusAtMax;
+                float proteinRecoveryMod = (protein / NUTRITION_MAX) * config.ProteinRecoveryRateBonusAtMax;
+                float proteinMaxStamMod = (protein / NUTRITION_MAX) * config.ProteinMaxStaminaBonusAtMax;
+                float vegDrainMod = (vegetable / NUTRITION_MAX) * config.VegetableDrainRateBonusAtMax;
+                float vegRecoveryThreshMod = (vegetable / NUTRITION_MAX) * config.VegetableRecoveryThresholdBonusAtMax;
+                float dairyRecoveryThreshMod = (dairy / NUTRITION_MAX) * config.DairyRecoveryThresholdBonusAtMax;
+                float dairyRecoveryRateMod = (dairy / NUTRITION_MAX) * config.DairyRecoveryRateBonusAtMax;
+                float fruitJumpCostMod = (fruit / NUTRITION_MAX) * config.FruitJumpCostBonusAtMax;
+                float fruitDrainMod = (fruit / NUTRITION_MAX) * config.FruitDrainRateBonusAtMax;
 
                 sb.AppendLine($"Grain: {grain:F1} (+{grainMaxStamMod * 100:F0}% max, -{grainJumpCostMod * 100:F0}% jump)");
-                sb.AppendLine($"Protein: {protein:F1} (+{(proteinRecoveryMod * 100):F0}% rec, +{(proteinMaxStamMod * 100):F0}% max)");
+                sb.AppendLine($"Protein: {protein:F1} (+{proteinRecoveryMod * 100:F0}% rec, +{proteinMaxStamMod * 100:F0}% max)");
                 sb.AppendLine($"Vegetable: {vegetable:F1} (-{vegDrainMod * 100:F0}% drain, -{vegRecoveryThreshMod * 100:F0}% thresh)");
-                sb.AppendLine($"Dairy: {dairy:F1} (-{dairyRecoveryThreshMod * 100:F0}% thresh, +{(dairyRecoveryRateMod * 100):F0}% rec)");
+                sb.AppendLine($"Dairy: {dairy:F1} (-{dairyRecoveryThreshMod * 100:F0}% thresh, +{dairyRecoveryRateMod * 100:F0}% rec)");
                 sb.AppendLine($"Fruit: {fruit:F1} (-{fruitJumpCostMod * 100:F0}% jump, -{fruitDrainMod * 100:F0}% drain)");
             }
 
@@ -123,28 +124,25 @@ namespace Vigor.Hud
                 sb.AppendLine($"Exhausted: {isExhausted} (Recovery at > {recoveryThreshold:F1})");
                 sb.AppendLine($"Sinking: {staminaTree.GetBool(EntityBehaviorVigorStamina.ATTR_EXHAUSTED_SINKING)}");
 
-                if (config.DebugMode)
-                {
-                    sb.AppendLine("\n--- Player State (Debug) ---");
-                    sb.AppendLine($"Idle: {staminaTree.GetBool("debug_isIdle")}");
-                    sb.AppendLine($"Sprinting: {staminaTree.GetBool("debug_isSprinting")}");
-                    sb.AppendLine($"Swimming: {staminaTree.GetBool("debug_isSwimming")}");
-                    sb.AppendLine($"Jumping: {staminaTree.GetBool("debug_isJumping")}");
-                    sb.AppendLine($"Fatiguing Action: {staminaTree.GetBool("debug_fatiguingActionThisTick")}");
-                    sb.AppendLine($"Regen Blocked: {staminaTree.GetBool("debug_regenPrevented")}");
+                sb.AppendLine("\n--- Player State (Debug) ---");
+                sb.AppendLine($"Idle: {staminaTree.GetBool("debug_isIdle")}");
+                sb.AppendLine($"Sprinting: {staminaTree.GetBool("debug_isSprinting")}");
+                sb.AppendLine($"Swimming: {staminaTree.GetBool("debug_isSwimming")}");
+                sb.AppendLine($"Jumping: {staminaTree.GetBool("debug_isJumping")}");
+                sb.AppendLine($"Fatiguing Action: {staminaTree.GetBool("debug_fatiguingActionThisTick")}");
+                sb.AppendLine($"Regen Blocked: {staminaTree.GetBool("debug_regenPrevented")}");
 
-                    sb.AppendLine("\n--- Rates & Timers (Debug) ---");
-                    sb.AppendLine($"Cost/sec: {staminaTree.GetFloat("debug_costPerSecond"):F2}");
-                    sb.AppendLine($"Gain/sec: {staminaTree.GetFloat("debug_staminaGainPerSecond"):F2}");
-                    sb.AppendLine($"Time Since Fatigue: {staminaTree.GetFloat("debug_timeSinceFatigue"):F1}s");
+                sb.AppendLine("\n--- Rates & Timers (Debug) ---");
+                sb.AppendLine($"Cost/sec: {staminaTree.GetFloat("debug_costPerSecond"):F2}");
+                sb.AppendLine($"Gain/sec: {staminaTree.GetFloat("debug_staminaGainPerSecond"):F2}");
+                sb.AppendLine($"Time Since Fatigue: {staminaTree.GetFloat("debug_timeSinceFatigue"):F1}s");
 
-                    sb.AppendLine("\n--- Final Modifiers (Debug) ---");
-                    sb.AppendLine($"Max Stamina: {staminaTree.GetFloat("debug_mod_maxStamina"):P0}");
-                    sb.AppendLine($"Recovery Rate: {staminaTree.GetFloat("debug_mod_recoveryRate"):P0}");
-                    sb.AppendLine($"Drain Rate: {staminaTree.GetFloat("debug_mod_drainRate"):P0}");
-                    sb.AppendLine($"Jump Cost: {staminaTree.GetFloat("debug_mod_jumpCost"):P0}");
-                    sb.AppendLine($"Recovery Threshold: {staminaTree.GetFloat("debug_mod_recoveryThreshold"):P0}");
-                }
+                sb.AppendLine("\n--- Final Modifiers (Debug) ---");
+                sb.AppendLine($"Max Stamina: {staminaTree.GetFloat("debug_mod_maxStamina"):P0}");
+                sb.AppendLine($"Recovery Rate: {staminaTree.GetFloat("debug_mod_recoveryRate"):P0}");
+                sb.AppendLine($"Drain Rate: {staminaTree.GetFloat("debug_mod_drainRate"):P0}");
+                sb.AppendLine($"Jump Cost: {staminaTree.GetFloat("debug_mod_jumpCost"):P0}");
+                sb.AppendLine($"Recovery Threshold: {staminaTree.GetFloat("debug_mod_recoveryThreshold"):P0}");
             }
 
             _debugText?.SetNewText(sb.ToString());
@@ -156,8 +154,14 @@ namespace Vigor.Hud
             capi.Event.UnregisterGameTickListener(_listenerId);
         }
 
+        public override void Toggle()
+        {
+            if (IsOpened()) TryClose();
+            else TryOpen();
+        }
+
         public override string ToggleKeyCombinationCode => null;
-        public override bool TryClose() => false;
+        public override bool TryClose() => base.TryClose();
         public override bool ShouldReceiveKeyboardEvents() => false;
         public override bool Focusable => false;
     }
