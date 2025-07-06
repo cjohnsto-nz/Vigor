@@ -7,6 +7,7 @@ using System;
 using Vintagestory.API.Server;
 using Vintagestory.API.Config;
 using Vintagestory.GameContent;
+using Vigor.Utils;
 
 namespace Vigor.Behaviors
 {
@@ -17,9 +18,11 @@ namespace Vigor.Behaviors
         private ILogger Logger => VigorModSystem.Instance.Logger;
         private string ModId => VigorModSystem.Instance.ModId;
         
-        // Nutrition modifiers based on vanilla nutrition values
-        private const string HUNGER_BEHAVIOR_ID = "health"; // The ID of the vanilla hunger behavior
-        private const string NUTRITION_ATTR_PATH = "nutritionlevels"; // Path to nutrition levels in hunger behavior
+                // New fields for the refactored nutrition bonus system
+        private VigorNutritionBonuses _nutritionBonuses;
+        private float _timeSinceBonusUpdate = 1f; // Start > 1 to force immediate update on first tick
+
+        // Nutrition modifiers are calculated using the 'hunger' attribute tree.
 
         private float _timeSinceLastFatiguingAction = 0f;
         private float _updateCooldown = 0f;
@@ -39,8 +42,8 @@ namespace Vigor.Behaviors
         {
             get {
                 float baseMaxStamina = StaminaTree?.GetFloat("maxStamina", Config.MaxStamina) ?? Config.MaxStamina;
-                float maxStaminaModifier = GetMaxStaminaModifier();
-                return baseMaxStamina * maxStaminaModifier;
+                // Use the cached modifier from the new class
+                return baseMaxStamina * _nutritionBonuses.MaxStaminaModifier;
             }
             set => StaminaTree?.SetFloat("maxStamina", value);
         }
@@ -61,7 +64,7 @@ namespace Vigor.Behaviors
 
         public EntityBehaviorVigorStamina(Entity entity) : base(entity)
         {
-            // We'll get the nutrition behavior in OnGameTick since it might not be initialized yet
+            _nutritionBonuses = new VigorNutritionBonuses();
         }
 
         public override void OnFallToGround(Vec3d lastTerrainContact, double withYMotion)
@@ -93,7 +96,14 @@ namespace Vigor.Behaviors
 
         public override void OnGameTick(float deltaTime)
         {
-            // Get nutrition behavior if we don't have it yet
+            // Periodically update the cached nutrition bonuses
+            _timeSinceBonusUpdate += deltaTime;
+            if (entity is EntityPlayer playerForBonuses && _timeSinceBonusUpdate >= 1.0f)
+            {
+                _nutritionBonuses.Update(playerForBonuses, Config);
+                _timeSinceBonusUpdate = 0f;
+            }
+
             if (entity.World.Side == EnumAppSide.Client) return; // Server-side logic only
 
             if (StaminaTree == null)
@@ -238,9 +248,13 @@ namespace Vigor.Behaviors
 
             if (isJumping)
             {
-                CurrentStamina -= Config.JumpStaminaCost;
-                _jumpCooldown = true;
-                if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Jump stamina cost: {Config.JumpStaminaCost} applied (Category: jump).", EnumChatType.Notification);
+                _jumpCooldown = true; // Set cooldown to prevent repeated jump detection
+
+                // Use the cached modifier from the new class
+                float modifiedJumpCost = Config.JumpStaminaCost * _nutritionBonuses.JumpCostModifier;
+                CurrentStamina -= modifiedJumpCost;
+                _timeSinceLastFatiguingAction = 0f; // Reset timer
+                if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Jump stamina cost: {modifiedJumpCost:F2} applied (Base: {Config.JumpStaminaCost}, Modifier: {_nutritionBonuses.JumpCostModifier:P0}) (Category: jump).", EnumChatType.Notification);
             }
 
             if (fatiguingActionThisTick)
@@ -291,9 +305,8 @@ namespace Vigor.Behaviors
 
             if (!overallRegenPreventedThisTick)
             {
-                // Apply nutrition recovery rate modifier
-                float recoveryRateModifier = GetRecoveryRateModifier();
-                float actualStaminaGainPerSecond = Config.StaminaGainPerSecond * recoveryRateModifier;
+                // Use the cached modifier from the new class
+                float actualStaminaGainPerSecond = Config.StaminaGainPerSecond * _nutritionBonuses.RecoveryRateModifier;
                 float clampedDeltaTime = Math.Min(deltaTime, 0.2f); // Cap deltaTime at 0.2s (5 FPS) for regen calculation to prevent excessive gain during lag spikes
 
                 // isPlayerIdle is now calculated earlier in the tick
@@ -318,9 +331,8 @@ namespace Vigor.Behaviors
 
                 if (IsExhausted)
                 {
-                    // Apply nutrition recovery threshold modifier
-                    float recoveryThresholdModifier = GetRecoveryThresholdModifier();
-                    float modifiedRecoveryThreshold = Config.StaminaRequiredToRecover * recoveryThresholdModifier;
+                    // Use the cached modifier from the new class
+                    float modifiedRecoveryThreshold = Config.StaminaRequiredToRecover * _nutritionBonuses.RecoveryThresholdModifier;
                     
                     if (CurrentStamina < modifiedRecoveryThreshold) CurrentStamina += actualStaminaGainPerSecond * clampedDeltaTime;
                     // else { IsExhausted already handled by the main check }
@@ -369,73 +381,6 @@ namespace Vigor.Behaviors
         {
             entity.WatchedAttributes.MarkPathDirty(Name);
         }
-        
-        #region Nutrition Modifiers
-        
-        // Get nutrition values from vanilla game
-        private float GetNutritionValue(string nutritionType)
-        {
-            try
-            {
-                // Access nutrition values directly from entity attributes
-                // In Vintage Story, nutrition is stored in the entity's watched attributes
-                var healthTree = entity.WatchedAttributes.GetTreeAttribute(HUNGER_BEHAVIOR_ID);
-                if (healthTree == null) return 0f;
-                
-                var nutritionTree = healthTree.GetTreeAttribute(NUTRITION_ATTR_PATH);
-                if (nutritionTree == null) return 0f;
-                
-                // Get the nutrition value (0-100)
-                return nutritionTree.GetFloat(nutritionType, 0f);
-            }
-            catch (Exception ex)
-            {
-                if (Config.DebugMode) Logger.Warning($"[{ModId}] Error getting nutrition value for {nutritionType}: {ex.Message}");
-                return 0f;
-            }
-        }
-        
-        // Max stamina modifier: Grain +50%, Protein +20%
-        private float GetMaxStaminaModifier()
-        {
-            float grainBonus = GetNutritionValue("grain") * Config.GrainMaxStaminaModifierPerPoint;
-            float proteinBonus = GetNutritionValue("protein") * Config.ProteinMaxStaminaModifierPerPoint;
-            return 1f + grainBonus + proteinBonus;
-        }
-        
-        // Recovery rate modifier: Protein +50%, Dairy +20%
-        private float GetRecoveryRateModifier()
-        {
-            float proteinBonus = GetNutritionValue("protein") * Config.ProteinRecoveryRateModifierPerPoint;
-            float dairyBonus = GetNutritionValue("dairy") * Config.DairyRecoveryRateModifierPerPoint;
-            return 1f + proteinBonus + dairyBonus;
-        }
-        
-        // Drain rate modifier: Vegetable -50%, Fruit -20%
-        private float GetDrainRateModifier()
-        {
-            float vegetableBonus = GetNutritionValue("vegetable") * Config.VegetableDrainRateModifierPerPoint;
-            float fruitBonus = GetNutritionValue("fruit") * Config.FruitDrainRateModifierPerPoint;
-            return Math.Max(Config.MinDrainRateModifier, 1f - vegetableBonus - fruitBonus);
-        }
-        
-        // Jump cost modifier: Fruit -50%, Grain -20%
-        private float GetJumpCostModifier()
-        {
-            float fruitBonus = GetNutritionValue("fruit") * Config.FruitJumpCostModifierPerPoint;
-            float grainBonus = GetNutritionValue("grain") * Config.GrainJumpCostModifierPerPoint;
-            return Math.Max(Config.MinJumpCostModifier, 1f - fruitBonus - grainBonus);
-        }
-        
-        // Recovery threshold modifier: Dairy -50%, Vegetable -20%
-        private float GetRecoveryThresholdModifier()
-        {
-            float dairyBonus = GetNutritionValue("dairy") * Config.DairyRecoveryThresholdModifierPerPoint;
-            float vegetableBonus = GetNutritionValue("vegetable") * Config.VegetableRecoveryThresholdModifierPerPoint;
-            return Math.Max(Config.MinRecoveryThresholdModifier, 1f - dairyBonus - vegetableBonus);
-        }
-        
-        #endregion
 
         public override string PropertyName()
         {
