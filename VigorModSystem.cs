@@ -12,6 +12,7 @@ namespace Vigor
     {
         private ICoreClientAPI _capi;
         private HudVigorBar _vigorHud;
+        private HudVigorDebug _debugHud;
         public static VigorModSystem Instance { get; private set; }
         public VigorConfig CurrentConfig { get; private set; }
         public string ModId => Mod.Info.ModID;
@@ -23,7 +24,6 @@ namespace Vigor
             Instance = this;
             LoadConfig(api);
             api.RegisterEntityBehaviorClass("vigor:vigorstamina", typeof(Behaviors.EntityBehaviorVigorStamina));
-
         }
 
         public override void StartClientSide(ICoreClientAPI api)
@@ -32,7 +32,9 @@ namespace Vigor
             _capi = api;
 
             _vigorHud = new HudVigorBar(api);
+            _debugHud = new HudVigorDebug(api);
             api.Gui.RegisterDialog(_vigorHud);
+            api.Gui.RegisterDialog(_debugHud);
 
             if (CurrentConfig.DebugMode) Logger.Notification($"[{ModId}] Client-side systems started.");
         }

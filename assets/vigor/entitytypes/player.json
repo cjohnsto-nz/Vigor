@@ -1,0 +1,5 @@
+{
+  "code": "entity-player",
+  "class": "EntityPlayer",
+  "behaviors": []
+}
