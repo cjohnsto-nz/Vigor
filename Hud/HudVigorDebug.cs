@@ -4,6 +4,7 @@ using Vigor.Config;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
+using Vintagestory.API.Datastructures;
 
 namespace Vigor.Hud
 {
@@ -11,17 +12,18 @@ namespace Vigor.Hud
     {
         private GuiElementDynamicText _debugText;
         private long _listenerId;
+        private bool _haveDumpedTrees;
 
         public HudVigorDebug(ICoreClientAPI capi) : base(capi)
         {
-            _listenerId = capi.Event.RegisterGameTickListener(OnGameTick, 250); // Update 4 times a second
+            _listenerId = capi.Event.RegisterGameTickListener(OnGameTick, 250);
             ComposeDialog();
         }
 
         public override void OnOwnPlayerDataReceived()
         {
             base.OnOwnPlayerDataReceived();
-            ComposeDialog();
+            UpdateDebugText();
         }
 
         private void OnGameTick(float dt)
@@ -32,7 +34,7 @@ namespace Vigor.Hud
 
         private void ComposeDialog()
         {
-            ElementBounds textBounds = ElementBounds.Fixed(0, 20, 300, 150);
+            ElementBounds textBounds = ElementBounds.Fixed(0, 20, 300, 200);
             ElementBounds bgBounds = ElementBounds.Fill.WithFixedPadding(GuiStyle.ElementToDialogPadding);
             bgBounds.BothSizing = ElementSizing.FitToChildren;
             bgBounds.WithChildren(textBounds);
@@ -41,7 +43,7 @@ namespace Vigor.Hud
 
             var composer = capi.Gui.CreateCompo("vigorinfodialog", dialogBounds)
                 .AddShadedDialogBG(bgBounds)
-                .AddDialogTitleBar("Vigor Nutrition Info", () => TryClose());
+                .AddDialogTitleBar("Vigor Debug Info", () => TryClose());
 
             composer.AddDynamicText("", CairoFont.WhiteDetailText(), textBounds, "debugtext");
 
@@ -74,18 +76,18 @@ namespace Vigor.Hud
 
             // Nutrition Section
             sb.AppendLine("--- Vigor Nutrition ---");
-            var nutritionTree = player.Entity.WatchedAttributes.GetTreeAttribute("nutrition");
-            if (nutritionTree == null)
+            var hungerTree = player.Entity.WatchedAttributes.GetTreeAttribute("hunger");
+            if (hungerTree == null)
             {
-                sb.AppendLine("Waiting for nutrition data...");
+                sb.AppendLine("Waiting for nutrition data (hunger)...");
             }
             else
             {
-                float protein = nutritionTree.GetFloat("protein", 0);
-                float fruit = nutritionTree.GetFloat("fruit", 0);
-                float vegetable = nutritionTree.GetFloat("vegetable", 0);
-                float dairy = nutritionTree.GetFloat("dairy", 0);
-                float grain = nutritionTree.GetFloat("grain", 0);
+                float protein = hungerTree.GetFloat("proteinLevel", 0);
+                float fruit = hungerTree.GetFloat("fruitLevel", 0);
+                float vegetable = hungerTree.GetFloat("vegetableLevel", 0);
+                float dairy = hungerTree.GetFloat("dairyLevel", 0);
+                float grain = hungerTree.GetFloat("grainLevel", 0);
 
                 float grainMaxStamMod = grain * config.GrainMaxStaminaModifierPerPoint;
                 float grainJumpCostMod = grain * config.GrainJumpCostModifierPerPoint;
