@@ -20,6 +20,11 @@ if ($vsProcess) {
 }
 
 # --- Build Step ---
+# Force clean build artifacts
+Write-Host "Removing old build artifacts..."
+if (Test-Path "bin") { Remove-Item -Recurse -Force "bin" }
+if (Test-Path "obj") { Remove-Item -Recurse -Force "obj" }
+
 Write-Host "Cleaning project..." -ForegroundColor Cyan
 dotnet clean
 
@@ -53,8 +58,11 @@ if (Test-Path $DestinationDir) {
 Write-Host "Copying new version from '$SourceDir'"
 Copy-Item -Path $SourceDir -Destination $ModsDir -Recurse
 
-# Delete old config
-Remove-Item -Path "C:\Users\chris\AppData\Roaming\VintagestoryData\ModConfig\vigor.json" -Force
+# Delete old config if it exists
+if (Test-Path "C:\Users\chris\AppData\Roaming\VintagestoryData\ModConfig\vigor.json") {
+    Write-Host "Removing old config at 'C:\Users\chris\AppData\Roaming\VintagestoryData\ModConfig\vigor.json'"
+    Remove-Item -Path "C:\Users\chris\AppData\Roaming\VintagestoryData\ModConfig\vigor.json" -Force
+}
 
 # --- Post-Deploy: Start Game ---
 Write-Host "`nDeployment COMPLETE. Launching Vintage Story..." -ForegroundColor Green

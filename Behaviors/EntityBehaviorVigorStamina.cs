@@ -4,6 +4,7 @@ using Vintagestory.API.Datastructures;
 using Vintagestory.API.MathTools; // Corrected namespace for Vec3f and other math utilities
 using Vigor.Config;
 using System;
+using System.Linq;
 using Vintagestory.API.Server;
 using Vintagestory.API.Config;
 using Vintagestory.GameContent;
@@ -31,6 +32,8 @@ namespace Vigor.Behaviors
         // private bool? _lastLoggedExhaustionState = null; // Unused, removed.
         private bool? _lastLoggedIdleBonusState = null; // To prevent log spam for idle bonus
         private bool _wasOverallRegenPreventedLastTick = false; // Tracks if regen was prevented by any means last tick for debug logging
+        private bool _hasLoggedSwimStats = false; // To prevent log spam for swim stats
+        private bool _hasLoggedWaterState = false; // To prevent log spam for water state
         public const string ATTR_EXHAUSTED_SINKING = "vigor:exhaustedSinking";
 
         private const string WALK_SPEED_DEBUFF_CODE = "vigorExhaustionWalkSpeedDebuff";
@@ -90,6 +93,12 @@ namespace Vigor.Behaviors
                     $"[{ModId} DEBUG] Landing detected via OnFallToGround. Velocity: {fallSpeed:F1}",
                     EnumChatType.Notification);
             }
+        }
+
+        public override void Initialize(EntityProperties properties, JsonObject attributes)
+        {
+            base.Initialize(properties, attributes);
+            Logger.Notification($"[{ModId} DEBUG] EntityBehaviorVigorStamina initialized for entity {entity.EntityId}.");
         }
 
         public override void OnGameTick(float deltaTime)
@@ -294,7 +303,42 @@ namespace Vigor.Behaviors
             bool staminaChanged = Math.Abs(staminaBefore - CurrentStamina) > 0.001f;
             bool exhaustionChanged = exhaustedBefore != IsExhausted;
             
+            if (isSwimming)
+            {
+                if (!_hasLoggedWaterState)
+                {
+                    Logger.Notification($"[{ModId} DEBUG] Player swimming state check: IsExhausted={IsExhausted}, isSwimming={isSwimming}, FeetInLiquid={plr.FeetInLiquid}, OnGround={plr.OnGround}");
+                    _hasLoggedWaterState = true;
+                }
+            }
+            else
+            {
+                _hasLoggedWaterState = false;
+            }
+
             bool shouldBeSinking = IsExhausted && isSwimming;
+
+            if (isSwimming && IsExhausted)
+            {
+                float currentAir = entity.WatchedAttributes.GetFloat("airLevel", entity.GetBehavior<EntityBehaviorHealth>()?.maxAirLevel ?? 10f);
+                float newAir = Math.Max(0, currentAir - (Config.ExhaustedSwimOxygenDebuff * deltaTime));
+                entity.WatchedAttributes.SetFloat("airLevel", newAir);
+            }
+
+            if (Config.DebugMode && shouldBeSinking)
+            {
+                if (!_hasLoggedSwimStats)
+                {
+                    var statNames = string.Join(", ", plr.Stats.Select(kvp => kvp.Key));
+                    Logger.Notification("[{0} DEBUG] Player {1} is exhausted and swimming. Available stats: {2}", ModId, plr.PlayerUID, statNames);
+                    _hasLoggedSwimStats = true;
+                }
+            }
+            else
+            {
+                _hasLoggedSwimStats = false;
+            }
+
             bool previousSinkingState = entity.WatchedAttributes.GetBool(ATTR_EXHAUSTED_SINKING, false);
             if (previousSinkingState != shouldBeSinking)
             {

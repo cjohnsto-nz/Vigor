@@ -5,7 +5,7 @@ namespace Vigor.Config
     public class VigorConfig
     {
         // General Settings
-        public bool DebugMode { get; set; } = false; // Disabled by default
+        public bool DebugMode { get; set; } = true; // Disabled by default
 
         // Stamina Mechanics
         public float MaxStamina { get; set; } = 150f;
@@ -25,6 +25,7 @@ namespace Vigor.Config
         
         // --- Exhaustion Effects ---
         public float ExhaustionWalkSpeedMultiplier { get; set; } = 0.5f; // Walking slower when exhausted (0.5 = 50% speed)
+        public float ExhaustedSwimOxygenDebuff { get; set; } = 1.0f; // Rate of oxygen drain when swimming while exhausted
         public float ExhaustedSinkNudgeY { get; set; } = -0.05f; // Small downward velocity nudge per tick when exhausted in water.
         public float MaxExhaustedSinkSpeedY { get; set; } = -0.5f; // Terminal velocity for sinking when exhausted in water.
         
