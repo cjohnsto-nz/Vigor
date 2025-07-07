@@ -41,13 +41,24 @@ namespace Vigor.Hud
 
         private void ComposeGuis()
         {
+            // Default Y offset
+            double yOffset = -89.5;
+            
+            // If HydrateOrDiedrate is loaded, offset our bar lower to avoid overlap
+            // The HydrateOrDiedrate thirst bar appears at the bottom of the screen
+            if (VigorModSystem.Instance.IsHydrateOrDiedrateLoaded)
+            {
+                // Offset by an additional 20 pixels to avoid overlapping with the thirst bar
+                yOffset -= 22.0;
+            }
+            
             ElementBounds dialogBounds = new ElementBounds()
             {
                 Alignment = EnumDialogArea.CenterBottom,
                 BothSizing = ElementSizing.Fixed,
                 fixedWidth = 348,
                 fixedHeight = 20
-            }.WithFixedAlignmentOffset(249, -89.5);
+            }.WithFixedAlignmentOffset(249, yOffset);
 
             ElementBounds statbarBounds = ElementBounds.Fixed(0, 5, 348, 10);
             double[] staminaBarColor = { 0.85, 0.65, 0, 0.9 };

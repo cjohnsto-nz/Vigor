@@ -26,10 +26,21 @@ namespace Vigor
             api.RegisterEntityBehaviorClass("vigor:vigorstamina", typeof(Behaviors.EntityBehaviorVigorStamina));
         }
 
+        // Added property to check for HydrateOrDiedrate mod
+        public bool IsHydrateOrDiedrateLoaded { get; private set; }
+        
         public override void StartClientSide(ICoreClientAPI api)
         {
             base.StartClientSide(api);
             _capi = api;
+            
+            // Check if HydrateOrDiedrate mod is installed
+            IsHydrateOrDiedrateLoaded = api.ModLoader.IsModEnabled("hydrateordiedrate");
+            
+            if (IsHydrateOrDiedrateLoaded && CurrentConfig.DebugMode)
+            {
+                Logger.Notification($"[{ModId}] HydrateOrDiedrate mod detected, will adjust HUD position.");
+            }
 
             _vigorHud = new HudVigorBar(api);
             _debugHud = new HudVigorDebug(api);
