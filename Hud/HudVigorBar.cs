@@ -46,12 +46,12 @@ namespace Vigor.Hud
             const float statsBarWidth = statsBarParentWidth * 0.41f; // Same ratio as HydrateOrDiedrate
             
             // Position exactly like HydrateOrDiedrate
-            double yOffset = 5.0; // Exactly where HydrateOrDiedrate bar would be
+            double yOffset = -5; // Exactly where HydrateOrDiedrate bar would be
             
             // If HydrateOrDiedrate is loaded, offset to avoid overlap
             if (VigorModSystem.Instance.IsHydrateOrDiedrateLoaded)
             {
-                yOffset = -6; // Offset to avoid overlap with HydrateOrDiedrate bar
+                yOffset = -17; // Offset to avoid overlap with HydrateOrDiedrate bar
             }
             
             // Create the parent bounds exactly like HydrateOrDiedrate
@@ -61,7 +61,7 @@ namespace Vigor.Hud
                 BothSizing = ElementSizing.Fixed,
                 fixedWidth = statsBarParentWidth,
                 fixedHeight = 100
-            }.WithFixedAlignmentOffset(0.0, yOffset);
+            }.WithFixedOffset(0, yOffset);
 
             // Apply the same horizontal offset as HydrateOrDiedrate
             bool isRight = true;
@@ -72,8 +72,8 @@ namespace Vigor.Hud
                 isRight ? EnumDialogArea.RightTop : EnumDialogArea.LeftTop, 
                 statsBarWidth
             )
-            .WithFixedAlignmentOffset(alignmentOffsetX, -16)
-            .WithFixedHeight(10);
+            .WithFixedAlignmentOffset(alignmentOffsetX, 5)
+            .WithFixedHeight(10); // statbar height verified
             
             // Create recovery bar bounds - same alignment as main bar
             var recoveryBarBounds = statbarBounds.FlatCopy();
