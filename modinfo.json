@@ -3,13 +3,10 @@
   "modid": "vigor",
   "name": "Vigor",
   "authors": ["chrisunfocused"],
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A streamlined stamina and exhaustion system for Vintage Story.",
   "dependencies": {
-    "game": "1.19.0" 
+    "game": "1.20.11" 
   },
-  "side": "Universal",
-  "systems": [
-    { "type": "Vigor.Client.VigorClientSystem" }
-  ]
+  "side": "Universal"
 }
