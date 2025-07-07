@@ -51,7 +51,7 @@ namespace Vigor.Hud
             // If HydrateOrDiedrate is loaded, offset to avoid overlap
             if (VigorModSystem.Instance.IsHydrateOrDiedrateLoaded)
             {
-                yOffset = -17; // Offset to avoid overlap with HydrateOrDiedrate bar
+                yOffset = -16.5; // Offset to avoid overlap with HydrateOrDiedrate bar
             }
             
             // Create the parent bounds exactly like HydrateOrDiedrate
