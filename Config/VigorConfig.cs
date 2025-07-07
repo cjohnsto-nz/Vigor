@@ -28,6 +28,7 @@ namespace Vigor.Config
         public float ExhaustedSwimOxygenDebuff { get; set; } = 1.0f; // Rate of oxygen drain when swimming while exhausted
         public float ExhaustedSinkNudgeY { get; set; } = -0.05f; // Small downward velocity nudge per tick when exhausted in water.
         public float MaxExhaustedSinkSpeedY { get; set; } = -0.5f; // Terminal velocity for sinking when exhausted in water.
+        public float ExhaustionLossCooldownSeconds { get; set; } = 3f; // Delay after exertion before regen starts
         
         // --- Nutrition Modifiers ---
         // These values represent the total bonus percentage when a nutrition bar is full (at 1500).

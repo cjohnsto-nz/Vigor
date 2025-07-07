@@ -4,10 +4,8 @@ using Vintagestory.API.Datastructures;
 using Vintagestory.API.MathTools; // Corrected namespace for Vec3f and other math utilities
 using Vigor.Config;
 using System;
-using System.Linq;
 using Vintagestory.API.Server;
 using Vintagestory.API.Config;
-using Vintagestory.GameContent;
 using Vigor.Utils;
 
 namespace Vigor.Behaviors
@@ -19,7 +17,7 @@ namespace Vigor.Behaviors
         private ILogger Logger => VigorModSystem.Instance.Logger;
         private string ModId => VigorModSystem.Instance.ModId;
         
-                // New fields for the refactored nutrition bonus system
+        // New fields for the refactored nutrition bonus system
         private VigorNutritionBonuses _nutritionBonuses;
         private float _timeSinceBonusUpdate = 1f; // Start > 1 to force immediate update on first tick
 
@@ -29,6 +27,7 @@ namespace Vigor.Behaviors
         private float _updateCooldown = 0f;
         private bool _jumpCooldown = false;
         private bool _wasExhaustedLastTick = false; 
+        private bool _isInitialExhaustion = false; // Tracks if the long exhaustion cooldown needs to be applied. 
         // private bool? _lastLoggedExhaustionState = null; // Unused, removed.
         private bool? _lastLoggedIdleBonusState = null; // To prevent log spam for idle bonus
         private bool _wasOverallRegenPreventedLastTick = false; // Tracks if regen was prevented by any means last tick for debug logging
@@ -221,6 +220,7 @@ namespace Vigor.Behaviors
             {
                 CurrentStamina = 0;
                 IsExhausted = true;
+                _isInitialExhaustion = true; // Set the one-time penalty flag.
             }
 
 
@@ -229,7 +229,25 @@ namespace Vigor.Behaviors
             bool tryingToMoveInWater = isSwimming && (plr.ServerControls.Forward || plr.ServerControls.Backward || plr.ServerControls.Left || plr.ServerControls.Right || plr.ServerControls.Jump);
 
             bool activityPreventsRegenerationThisTick = tryingToSprint || tryingToMoveInWater;
-            bool overallRegenPreventedThisTick = fatiguingActionThisTick || activityPreventsRegenerationThisTick;
+            float requiredCooldown;
+            if (_isInitialExhaustion)
+            {
+                requiredCooldown = Config.ExhaustionLossCooldownSeconds;
+            }
+            else
+            {
+                requiredCooldown = Config.StaminaLossCooldownSeconds;
+            }
+
+            bool cooldownActive = _timeSinceLastFatiguingAction < requiredCooldown;
+
+            // If the initial long cooldown has just been served, clear the flag for the next fatiguing action.
+            if (_isInitialExhaustion && !cooldownActive)
+            {
+                _isInitialExhaustion = false;
+            }
+
+            bool overallRegenPreventedThisTick = fatiguingActionThisTick || activityPreventsRegenerationThisTick || cooldownActive;
 
             // Calculate recovery threshold and gain rate once for both game logic and debug attributes.
             float modifiedRecoveryThreshold = MaxStamina * Config.StaminaRequiredToRecoverPercent * _nutritionBonuses.RecoveryThresholdModifier;
@@ -252,6 +270,7 @@ namespace Vigor.Behaviors
                     string reason = "";
                     if (fatiguingActionThisTick) reason += "fatiguingActionThisTick ";
                     if (activityPreventsRegenerationThisTick) reason += "activityPreventsRegen(sprint/swim) ";
+                    if (cooldownActive) reason += "cooldown ";
                     (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Stamina regen PAUSED. Reason: {reason.Trim()}", EnumChatType.Notification);
                 }
                 else if (!overallRegenPreventedThisTick && _wasOverallRegenPreventedLastTick)
