@@ -41,41 +41,67 @@ namespace Vigor.Hud
 
         private void ComposeGuis()
         {
-            // Default Y offset
-            double yOffset = -89.5;
+            // Match HydrateOrDiedrate's bar layout exactly
+            const float statsBarParentWidth = 850f;
+            const float statsBarWidth = statsBarParentWidth * 0.41f; // Same ratio as HydrateOrDiedrate
             
-            // If HydrateOrDiedrate is loaded, offset our bar lower to avoid overlap
-            // The HydrateOrDiedrate thirst bar appears at the bottom of the screen
+            // Position exactly like HydrateOrDiedrate
+            double yOffset = 5.0; // Exactly where HydrateOrDiedrate bar would be
+            
+            // If HydrateOrDiedrate is loaded, offset to avoid overlap
             if (VigorModSystem.Instance.IsHydrateOrDiedrateLoaded)
             {
-                // Offset by an additional 20 pixels to avoid overlapping with the thirst bar
-                yOffset -= 22.0;
+                yOffset = -6; // Offset to avoid overlap with HydrateOrDiedrate bar
             }
             
-            ElementBounds dialogBounds = new ElementBounds()
+            // Create the parent bounds exactly like HydrateOrDiedrate
+            var statsBarBounds = new ElementBounds()
             {
                 Alignment = EnumDialogArea.CenterBottom,
                 BothSizing = ElementSizing.Fixed,
-                fixedWidth = 348,
-                fixedHeight = 20
-            }.WithFixedAlignmentOffset(249, yOffset);
+                fixedWidth = statsBarParentWidth,
+                fixedHeight = 100
+            }.WithFixedAlignmentOffset(0.0, yOffset);
 
-            ElementBounds statbarBounds = ElementBounds.Fixed(0, 5, 348, 10);
-            double[] staminaBarColor = { 0.85, 0.65, 0, 0.9 };
-            // For the recovery bar, use a darker, more transparent version of the main stamina color
+            // Apply the same horizontal offset as HydrateOrDiedrate
+            bool isRight = true;
+            double alignmentOffsetX = isRight ? -2.0 : 1.0;
+            
+            // Create SEPARATE bar bounds with different alignment - exactly like HydrateOrDiedrate
+            var statbarBounds = ElementStdBounds.Statbar(
+                isRight ? EnumDialogArea.RightTop : EnumDialogArea.LeftTop, 
+                statsBarWidth
+            )
+            .WithFixedAlignmentOffset(alignmentOffsetX, -16)
+            .WithFixedHeight(10);
+            
+            // Create recovery bar bounds - same alignment as main bar
+            var recoveryBarBounds = statbarBounds.FlatCopy();
+
+            // Create parent bounds same as HydrateOrDiedrate
+            var barParentBounds = statsBarBounds.FlatCopy().FixedGrow(0.0, 20.0);
+            
+            // Set up bar colors with sufficient alpha for background visibility
+            double[] staminaBarColor = { 0.85, 0.65, 0, 0.5 }; // Use alpha 0.5 to match HydrateOrDiedrate
             double[] recoveryBarColor = { staminaBarColor[0] * 0.6, staminaBarColor[1] * 0.6, staminaBarColor[2], 0.5 };
 
-            var composer = capi.Gui.CreateCompo("vigorhud", dialogBounds.FlatCopy());
+            // Create composer using the parent bounds - exactly like HydrateOrDiedrate
+            var composer = capi.Gui.CreateCompo("vigorhud", barParentBounds);
+            
+            // Begin with child elements in stats bounds
+            composer.BeginChildElements(statsBarBounds);
             
             // Add recovery bar first (to be in the background)
-            _recoveryThresholdStatbar = new GuiElementStatbar(composer.Api, statbarBounds, recoveryBarColor, true, false);
+            _recoveryThresholdStatbar = new GuiElementStatbar(composer.Api, recoveryBarBounds, recoveryBarColor, isRight, false);
             _recoveryThresholdStatbar.HideWhenFull = true;
             composer.AddInteractiveElement(_recoveryThresholdStatbar, "recoverybar");
 
             // Add main stamina bar
-            _staminaStatbar = new GuiElementStatbar(composer.Api, statbarBounds, staminaBarColor, true, false);
+            _staminaStatbar = new GuiElementStatbar(composer.Api, statbarBounds, staminaBarColor, isRight, false);
             composer.AddInteractiveElement(_staminaStatbar, "staminabar");
-
+            
+            // End child elements and compose
+            composer.EndChildElements();
             Composers["vigorhud"] = composer.Compose();
 
             TryOpen();
@@ -91,12 +117,13 @@ namespace Vigor.Hud
             // The line interval should also be based on the *current* max stamina
             // Draw a line every 100 stamina points, similar to the vanilla hunger bar.
             _staminaStatbar.SetLineInterval(1500f / max);
-
+            
             // Update recovery threshold bar
             // If exhausted, show the threshold. If not, set value to max, which hides it because HideWhenFull is true.
             float recoveryValue = isExhausted ? recoveryThreshold : max;
             _recoveryThresholdStatbar.SetValues(recoveryValue, 0, max);
             _recoveryThresholdStatbar.SetLineInterval(1500f / max);
+
         }
 
         public override bool TryClose() => false;
