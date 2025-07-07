@@ -40,7 +40,7 @@ Write-Host "Build SUCCEEDED." -ForegroundColor Green
 
 # --- Deploy Step ---
 $SourceDir = Join-Path $ProjectRoot "bin\Debug\ModPackage\$ProjectName"
-$DestinationDir = Join-Path $ModsDir $ProjectName
+$TempDir = Join-Path $env:TEMP "VigorTempDeploy"
 
 if (-not (Test-Path $SourceDir)) {
     Write-Host "Error: Packaged mod directory not found at '$SourceDir'." -ForegroundColor Red
@@ -48,15 +48,49 @@ if (-not (Test-Path $SourceDir)) {
     exit 1
 }
 
-Write-Host "Deploying mod to '$ModsDir'..." -ForegroundColor Cyan
-
-if (Test-Path $DestinationDir) {
-    Write-Host "Removing old version at '$DestinationDir'"
-    Remove-Item -Recurse -Force $DestinationDir
+# Get version from modinfo.json to create versioned zip file
+$ModInfoPath = Join-Path $SourceDir "modinfo.json"
+$Version = "0.0.0" # Default version if not found
+if (Test-Path $ModInfoPath) {
+    $ModInfo = Get-Content $ModInfoPath | ConvertFrom-Json
+    $Version = $ModInfo.version
 }
 
-Write-Host "Copying new version from '$SourceDir'"
-Copy-Item -Path $SourceDir -Destination $ModsDir -Recurse
+# Create zip filename
+$ZipFileName = "vigor_$Version.zip"
+$ZipFilePath = Join-Path $ModsDir $ZipFileName
+
+Write-Host "Deploying mod as '$ZipFileName' to '$ModsDir'..." -ForegroundColor Cyan
+
+# Clean temp directory if it exists
+if (Test-Path $TempDir) {
+    Remove-Item -Recurse -Force $TempDir
+}
+
+# Create temp directory for packaging
+New-Item -ItemType Directory -Path $TempDir | Out-Null
+
+# Copy all files from source to temp
+Copy-Item -Path "$SourceDir\*" -Destination $TempDir -Recurse
+
+# Ensure modicon.png is included
+$ModIconSource = Join-Path $ProjectRoot "modicon.png"
+if (Test-Path $ModIconSource) {
+    Write-Host "Including modicon.png in package"
+    Copy-Item -Path $ModIconSource -Destination $TempDir
+} else {
+    Write-Host "Warning: modicon.png not found at '$ModIconSource'. Icon will not be included." -ForegroundColor Yellow
+}
+
+# Remove any existing zip file
+if (Test-Path $ZipFilePath) {
+    Write-Host "Removing existing zip at '$ZipFilePath'"
+    Remove-Item -Force $ZipFilePath
+}
+
+# Create zip file
+Write-Host "Creating zip file '$ZipFilePath'"
+Compress-Archive -Path "$TempDir\*" -DestinationPath $ZipFilePath
 
 # Delete old config if it exists
 if (Test-Path "C:\Users\chris\AppData\Roaming\VintagestoryData\ModConfig\vigor.json") {

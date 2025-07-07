@@ -330,7 +330,10 @@ namespace Vigor.Behaviors
             {
                 if (!_hasLoggedWaterState)
                 {
-                    Logger.Notification($"[{ModId} DEBUG] Player swimming state check: IsExhausted={IsExhausted}, isSwimming={isSwimming}, FeetInLiquid={plr.FeetInLiquid}, OnGround={plr.OnGround}");
+                    if (Config.DebugMode)
+                    {
+                        Logger.Notification($"[{ModId} DEBUG] Player swimming state check: IsExhausted={IsExhausted}, isSwimming={isSwimming}, FeetInLiquid={plr.FeetInLiquid}, OnGround={plr.OnGround}");
+                    }
                     _hasLoggedWaterState = true;
                 }
             }
