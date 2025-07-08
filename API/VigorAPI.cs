@@ -1,6 +1,8 @@
 using System;
+using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vigor.Behaviors;
+using Vigor.Utils;
 
 namespace Vigor.API
 {
@@ -10,6 +12,7 @@ namespace Vigor.API
     public class VigorAPI : IVigorAPI
     {
         private readonly ICoreAPI _api;
+        private bool _lastExhaustedState = false; // Track last exhaustion state to avoid excessive logging
 
         public VigorAPI(ICoreAPI api)
         {
@@ -29,6 +32,23 @@ namespace Vigor.API
         /// <inheritdoc />
         public float GetCurrentStamina(EntityPlayer player)
         {
+            // On client side, use the synchronized state
+            if (_api.Side == EnumAppSide.Client && player != null)
+            {
+                ICoreClientAPI capi = _api as ICoreClientAPI;
+                if (capi?.World?.Player?.Entity == player)
+                {
+                    string playerUID = capi.World.Player.PlayerUID;
+                    var syncedState = VigorModSystem.Instance.GetClientStaminaState(playerUID);
+                    if (syncedState != null)
+                    {
+                        return syncedState.CurrentStamina;
+                    }
+                    // Fall through to behavior check if no sync data
+                }
+            }
+            
+            // Default/server behavior
             var behavior = GetStaminaBehavior(player);
             return behavior?.CurrentStamina ?? -1;
         }
@@ -36,6 +56,23 @@ namespace Vigor.API
         /// <inheritdoc />
         public float GetMaxStamina(EntityPlayer player)
         {
+            // On client side, use the synchronized state
+            if (_api.Side == EnumAppSide.Client && player != null)
+            {
+                ICoreClientAPI capi = _api as ICoreClientAPI;
+                if (capi?.World?.Player?.Entity == player)
+                {
+                    string playerUID = capi.World.Player.PlayerUID;
+                    var syncedState = VigorModSystem.Instance.GetClientStaminaState(playerUID);
+                    if (syncedState != null)
+                    {
+                        return syncedState.MaxStamina;
+                    }
+                    // Fall through to behavior check if no sync data
+                }
+            }
+            
+            // Default/server behavior
             var behavior = GetStaminaBehavior(player);
             return behavior?.MaxStamina ?? -1;
         }
@@ -43,8 +80,39 @@ namespace Vigor.API
         /// <inheritdoc />
         public bool IsExhausted(EntityPlayer player)
         {
+            // On client side, use the synchronized state
+            if (_api.Side == EnumAppSide.Client && player != null)
+            {
+                ICoreClientAPI capi = _api as ICoreClientAPI;
+                if (capi?.World?.Player?.Entity == player)
+                {
+                    string playerUID = capi.World.Player.PlayerUID;
+                    var syncedState = VigorModSystem.Instance.GetClientStaminaState(playerUID);
+                    if (syncedState != null)
+                    {
+                        // Log only when state changes to minimize log spam
+                        if (syncedState.IsExhausted != _lastExhaustedState)
+                        {
+                            _api.Logger.Debug("[Vigor:API] Client IsExhausted changed: {0} -> {1}", _lastExhaustedState, syncedState.IsExhausted);
+                            _lastExhaustedState = syncedState.IsExhausted;
+                        }
+                        return syncedState.IsExhausted;
+                    }
+                    // Fall through to behavior check if no sync data
+                }
+            }
+            
+            // Default/server behavior
             var behavior = GetStaminaBehavior(player);
-            return behavior?.IsExhausted ?? false;
+            
+            // Reduce logging to only log when behavior is null or exhausted state changes
+            if (behavior == null)
+            {
+                _api.Logger.Debug("[Vigor:API] IsExhausted called for player {0}, behavior is null", (player != null ? player.ToString() : "null"));
+                return false;
+            }
+            
+            return behavior.IsExhausted;
         }
 
         /// <inheritdoc />
