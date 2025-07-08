@@ -21,8 +21,10 @@ namespace Vigor
         private HudVigorBar _vigorHud;
         private HudVigorDebug _debugHud;
         private long _syncTimerId;
+        private long _drainTickId;
         private IClientNetworkChannel _clientNetworkChannel;
         private IServerNetworkChannel _serverNetworkChannel;
+        private VigorAPI _activeStaminaDrainHandler;
         
         // Dictionary to store synchronized client-side stamina state by player UID
         private Dictionary<string, StaminaStatePacket> _clientStaminaState = new Dictionary<string, StaminaStatePacket>();
@@ -224,6 +226,77 @@ namespace Vigor
             if (CurrentConfig.DebugMode) Logger.Notification($"[{ModId}] Server-side systems started with state synchronization.");
         }
 
+        /// <summary>
+        /// Process continuous stamina drain for all active drains
+        /// </summary>
+        private void ProcessStaminaDrainTick(float dt)
+        {
+            if (_sapi == null || _activeStaminaDrainHandler == null) return;
+            
+            try
+            {
+                // Process all active stamina drains
+                _activeStaminaDrainHandler.ProcessActiveStaminaDrains(dt);
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"[{ModId}] Error processing stamina drains: {ex}");
+            }
+        }
+        
+        /// <summary>
+        /// Checks if the continuous stamina drain is active
+        /// </summary>
+        /// <returns>True if the drain is currently active</returns>
+        public bool IsStaminaDrainActive()
+        {
+            Logger.Debug($"[{ModId}] IsStaminaDrainActive called, current _drainTickId: {_drainTickId}");
+            return _drainTickId != 0;
+        }
+        
+        /// <summary>
+        /// Starts the continuous stamina drain tick processing
+        /// </summary>
+        /// <param name="handler">The VigorAPI instance that will handle the drain processing</param>
+        public void StartStaminaDrainTick(VigorAPI handler)
+        {
+            Logger.Debug($"[{ModId}] StartStaminaDrainTick called with handler: {handler}");
+            
+            if (_sapi == null)
+            {
+                Logger.Error($"[{ModId}] Cannot start stamina drain tick - _sapi is null!");
+                return;
+            }
+            
+            // Don't register multiple times
+            if (IsStaminaDrainActive())
+            {
+                Logger.Debug($"[{ModId}] Drain tick already active, updating handler only");
+                _activeStaminaDrainHandler = handler; // Update handler if needed
+                return;
+            }
+            
+            _activeStaminaDrainHandler = handler;
+            
+            // Register tick processor at 4 times per second (250ms)
+            Logger.Debug($"[{ModId}] About to register game tick listener for stamina drain");
+            _drainTickId = _sapi.Event.RegisterGameTickListener(dt => ProcessStaminaDrainTick(dt), 250);
+            Logger.Event($"[{ModId}] Started continuous stamina drain processing with tickId: {_drainTickId}");
+        }
+        
+        /// <summary>
+        /// Stops the continuous stamina drain tick processing
+        /// </summary>
+        public void StopStaminaDrainTick()
+        {
+            if (_sapi == null || !IsStaminaDrainActive()) return;
+            
+            _sapi.Event.UnregisterGameTickListener(_drainTickId);
+            _drainTickId = 0;
+            _activeStaminaDrainHandler = null;
+            Logger.Event($"[{ModId}] Stopped continuous stamina drain processing");
+        }
+        
         public void LoadConfig(ICoreAPI api)
         {
             try

@@ -39,5 +39,29 @@ namespace Vigor.API
         /// <param name="deltaTime">Time elapsed since last frame in seconds</param>
         /// <returns>True if stamina was drained, false if not enough stamina</returns>
         bool DrainStamina(EntityPlayer player, float amountPerSecond, float deltaTime);
+        
+        /// <summary>
+        /// Starts continuous stamina drain at the specified rate
+        /// </summary>
+        /// <param name="player">The player entity</param>
+        /// <param name="drainId">Unique identifier for this drain source (e.g., "climbing")</param>
+        /// <param name="amountPerSecond">Amount of stamina to drain per second</param>
+        /// <returns>True if drain was started successfully, false if player is already exhausted</returns>
+        bool StartStaminaDrain(EntityPlayer player, string drainId, float amountPerSecond);
+        
+        /// <summary>
+        /// Stops a previously started continuous stamina drain
+        /// </summary>
+        /// <param name="player">The player entity</param>
+        /// <param name="drainId">Identifier of the drain to stop</param>
+        void StopStaminaDrain(EntityPlayer player, string drainId);
+        
+        /// <summary>
+        /// Checks if a player can perform an activity requiring stamina
+        /// (e.g., start climbing) based on current exhaustion state
+        /// </summary>
+        /// <param name="player">The player entity</param>
+        /// <returns>True if the player can perform the action, false if exhausted</returns>
+        bool CanPerformStaminaAction(EntityPlayer player);
     }
 }
