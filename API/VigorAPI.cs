@@ -182,7 +182,21 @@ namespace Vigor.API
         public bool DrainStamina(EntityPlayer player, float amountPerSecond, float deltaTime)
         {
             float amount = amountPerSecond * deltaTime;
-            return ConsumeStamina(player, amount, true);
+            
+            // Get stamina behavior directly
+            if (_api.Side == EnumAppSide.Server)
+            {
+                var behavior = GetStaminaBehavior(player);
+                if (behavior != null)
+                {
+                    // Always reset fatigue timer during continuous drain to prevent regeneration
+                    behavior.ResetFatigueTimer();
+                    _api.Logger.Event("[Vigor:API] Fatigue timer reset during continuous drain for player {0}", player.ToString());
+                }
+            }
+            
+            // Now consume the stamina (ignoreFatigue keeps it working the same otherwise)
+            return ConsumeStamina(player, amount, false);
         }
         
         /// <inheritdoc />
@@ -328,7 +342,7 @@ namespace Vigor.API
                     _api.Logger.Event("[Vigor:API] Draining {0} stamina from player {1} for continuous actions", 
                         amount, player.ToString());
                         
-                    bool success = ConsumeStamina(player, amount, true);
+                    bool success = ConsumeStamina(player, amount, false);
                     
                     // Check if player is now exhausted
                     if (IsExhausted(player))
