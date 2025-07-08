@@ -6,6 +6,7 @@ using Vigor.Config;
 using System;
 using Vintagestory.API.Server;
 using Vintagestory.API.Config;
+using Vigor.API;
 using Vigor.Utils;
 
 namespace Vigor.Behaviors
@@ -413,9 +414,21 @@ namespace Vigor.Behaviors
             return true;
         }
 
-        private void MarkDirty()
+        /// <summary>
+        /// Marks the stamina attributes as dirty to sync with clients
+        /// </summary>
+        public void MarkDirty()
         {
             entity.WatchedAttributes.MarkPathDirty(Name);
+        }
+        
+        /// <summary>
+        /// Resets the fatigue timer, indicating a fatiguing action has occurred
+        /// For use by the public API
+        /// </summary>
+        public void ResetFatigueTimer()
+        {
+            _timeSinceLastFatiguingAction = 0f;
         }
 
         public override string PropertyName()
