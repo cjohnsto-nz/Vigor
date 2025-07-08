@@ -46,40 +46,43 @@ namespace Vigor.Hud
             const float statsBarWidth = statsBarParentWidth * 0.41f; // Same ratio as HydrateOrDiedrate
             
             // Position exactly like HydrateOrDiedrate
-            double yOffset = -5; // Exactly where HydrateOrDiedrate bar would be
+            double yOffset = 96; // Exactly where HydrateOrDiedrate bar would be
+            double statsBarHeight = 10;
             
             // If HydrateOrDiedrate is loaded, offset to avoid overlap
             if (VigorModSystem.Instance.IsHydrateOrDiedrateLoaded)
             {
-                yOffset = -16.5; // Offset to avoid overlap with HydrateOrDiedrate bar
+                yOffset += 22; // Offset to avoid overlap with HydrateOrDiedrate bar
             }
             
-            // Create the parent bounds exactly like HydrateOrDiedrate
+            // Create the parent bounds with CenterBottom alignment
             var statsBarBounds = new ElementBounds()
             {
                 Alignment = EnumDialogArea.CenterBottom,
                 BothSizing = ElementSizing.Fixed,
                 fixedWidth = statsBarParentWidth,
-                fixedHeight = 100
-            }.WithFixedOffset(0, yOffset);
+                fixedHeight = 10
+            };
 
-            // Apply the same horizontal offset as HydrateOrDiedrate
+            // Set up alignment
             bool isRight = true;
             double alignmentOffsetX = isRight ? -2.0 : 1.0;
             
-            // Create SEPARATE bar bounds with different alignment - exactly like HydrateOrDiedrate
+            // Create bar bounds WITHOUT horizontal offset (will be applied to parent container)
             var statbarBounds = ElementStdBounds.Statbar(
-                isRight ? EnumDialogArea.RightTop : EnumDialogArea.LeftTop, 
+                isRight ? EnumDialogArea.RightMiddle : EnumDialogArea.LeftMiddle, 
                 statsBarWidth
             )
-            .WithFixedAlignmentOffset(alignmentOffsetX, 5)
             .WithFixedHeight(10); // statbar height verified
             
             // Create recovery bar bounds - same alignment as main bar
             var recoveryBarBounds = statbarBounds.FlatCopy();
 
-            // Create parent bounds same as HydrateOrDiedrate
-            var barParentBounds = statsBarBounds.FlatCopy().FixedGrow(0.0, 20.0);
+            // Create parent bounds and apply both X and Y offset at this level - the true parent container
+            var barParentBounds = statsBarBounds.FlatCopy()
+                .FixedGrow(0.0, statsBarHeight)
+                .WithFixedOffset(0, -yOffset)
+                .WithFixedAlignmentOffset(alignmentOffsetX, 0);
             
             // Set up bar colors with sufficient alpha for background visibility
             double[] staminaBarColor = { 0.85, 0.65, 0, 0.5 }; // Use alpha 0.5 to match HydrateOrDiedrate
