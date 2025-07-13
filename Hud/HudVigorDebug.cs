@@ -126,6 +126,7 @@ namespace Vigor.Hud
 
                 sb.AppendLine("\n--- Player State (Debug) ---");
                 sb.AppendLine($"Idle: {staminaTree.GetBool("debug_isIdle")}");
+                sb.AppendLine($"Sitting: {staminaTree.GetBool("debug_isSitting")}");
                 sb.AppendLine($"Sprinting: {staminaTree.GetBool("debug_isSprinting")}");
                 sb.AppendLine($"Swimming: {staminaTree.GetBool("debug_isSwimming")}");
                 sb.AppendLine($"Jumping: {staminaTree.GetBool("debug_isJumping")}");

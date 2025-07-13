@@ -151,6 +151,8 @@ namespace Vigor.Behaviors
             // Determine if player is effectively stationary. Calculated early for use in both cost and regen logic.
             bool isPlayerIdle = plr.ServerPos.Motion.LengthSq() < 0.0001; // Threshold for being considered idle (e.g., speed < 0.01 units/sec)
 
+            bool isPlayerSitting = plr.ServerControls.FloorSitting; // True if player is sitting on the floor
+
             // Cache raw player inputs at the beginning of the tick.
             bool physicalSprintKeyHeldThisTick = plr.ServerControls.Sprint;
 
@@ -180,7 +182,7 @@ namespace Vigor.Behaviors
             
             // Check for fatiguing actions
             bool isJumping = plr.Controls.Jump && !plr.OnGround && !_jumpCooldown;
-            bool isSprinting = physicalSprintKeyHeldThisTick && plr.ServerPos.Motion.LengthSq() > 0.01;
+            bool isSprinting = physicalSprintKeyHeldThisTick && plr.ServerPos.Motion.LengthSq() > Config.SprintDetectionSpeedThreshold;
             bool isSwimming = plr.FeetInLiquid && !plr.OnGround;
 
             float costPerSecond = 0f;
@@ -257,9 +259,17 @@ namespace Vigor.Behaviors
             if (!overallRegenPreventedThisTick)
             {
                 actualStaminaGainPerSecond = Config.StaminaGainPerSecond * _nutritionBonuses.RecoveryRateModifier;
+
+                // If player is idle, apply idle regen multiplier
                 if (isPlayerIdle && plr.OnGround && !plr.FeetInLiquid)
                 {
                     actualStaminaGainPerSecond *= Config.IdleStaminaRegenMultiplier;
+
+                    // If player is sitting, apply sitting regen multiplier
+                    if (isPlayerSitting)
+                    {
+                        actualStaminaGainPerSecond *= Config.SittingStaminaRegenMultiplier;
+                    }
                 }
             }
 
@@ -370,6 +380,7 @@ namespace Vigor.Behaviors
             bool debugStateChanged = false;
             // States
             debugStateChanged |= SetDebugBool("debug_isIdle", isPlayerIdle);
+            debugStateChanged |= SetDebugBool("debug_isSitting", isPlayerSitting);
             debugStateChanged |= SetDebugBool("debug_isSprinting", isSprinting);
             debugStateChanged |= SetDebugBool("debug_isSwimming", isSwimming);
             debugStateChanged |= SetDebugBool("debug_isJumping", isJumping);
