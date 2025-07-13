@@ -112,14 +112,60 @@ namespace Vigor
         /// </summary>
         private void OnStaminaStatePacket(StaminaStatePacket packet)
         {
-            if (_capi == null) return;
-            
-            // Store the updated state in our client-side dictionary
-            _clientStaminaState[packet.PlayerUID] = packet;
-            
-            if (CurrentConfig.DebugMode && _capi.World.Player.PlayerUID == packet.PlayerUID)
+            if (_capi == null)
             {
-                _capi.Logger.Debug($"[{ModId}] Received stamina state: {packet.CurrentStamina}/{packet.MaxStamina}, Exhausted: {packet.IsExhausted}");
+                Logger.Error($"[{ModId}] OnStaminaStatePacket: _capi is null, cannot process packet!");
+                return;
+            }
+            
+            try
+            {
+                // Always log first packet received for own player (critical for debugging sync issues)
+                bool isFirstPacket = !_clientStaminaState.ContainsKey(packet.PlayerUID);
+                bool isOwnPlayer = _capi.World.Player != null && _capi.World.Player.PlayerUID == packet.PlayerUID;
+                
+                // Store the updated state in our client-side dictionary
+                _clientStaminaState[packet.PlayerUID] = packet;
+                
+                if (isFirstPacket && isOwnPlayer)
+                {
+                    // Use Error level for the first packet to ensure it's visible in logs
+                    _capi.Logger.Error($"[{ModId}] FIRST stamina state packet received for own player: {packet.CurrentStamina}/{packet.MaxStamina}, Exhausted: {packet.IsExhausted}");
+                }
+                else if (CurrentConfig.DebugMode && isOwnPlayer)
+                {
+                    // Use regular debug for subsequent packets
+                    _capi.Logger.Debug($"[{ModId}] Received stamina state: {packet.CurrentStamina}/{packet.MaxStamina}, Exhausted: {packet.IsExhausted}");
+                }
+                
+                // Update player entity's WatchedAttributes if this is our own player
+                // This ensures the client-side EntityBehaviorVigorStamina will have access to the data
+                if (isOwnPlayer && _capi.World.Player.Entity != null)
+                {
+                    var staminaTree = _capi.World.Player.Entity.WatchedAttributes.GetOrAddTreeAttribute(EntityBehaviorVigorStamina.Name);
+                    if (staminaTree != null)
+                    {
+                        staminaTree.SetFloat("currentStamina", packet.CurrentStamina);
+                        staminaTree.SetFloat("maxStamina", packet.MaxStamina);
+                        staminaTree.SetBool("isExhausted", packet.IsExhausted);
+                        
+                        // Mark attributes as dirty to propagate changes
+                        _capi.World.Player.Entity.WatchedAttributes.MarkPathDirty(EntityBehaviorVigorStamina.Name);
+                        
+                        if (CurrentConfig.DebugMode)
+                        {
+                            _capi.Logger.Debug($"[{ModId}] Updated local WatchedAttributes with received stamina data");
+                        }
+                    }
+                    else if (CurrentConfig.DebugMode)
+                    {
+                        _capi.Logger.Warning($"[{ModId}] Could not get or create stamina tree attribute for player entity");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _capi.Logger.Error($"[{ModId}] Error processing stamina state packet: {ex.Message}\nStack trace: {ex.StackTrace}");
             }
         }
         
@@ -145,20 +191,52 @@ namespace Vigor
         /// </summary>
         private void SyncStaminaState(float dt)
         {
-            if (_sapi == null) return;
+            if (_sapi == null) 
+            {
+                Logger.Error($"[{ModId}] SyncStaminaState: _sapi is null! Stamina sync to clients will not work.");
+                return;
+            }
             
             try
             {
+                // Log channel status
+                if (_serverNetworkChannel == null) 
+                {
+                    Logger.Error($"[{ModId}] SyncStaminaState: _serverNetworkChannel is null! Network not initialized properly.");
+                    return;
+                }
+                
+                if (CurrentConfig.DebugMode)
+        {
+            Logger.Debug($"[{ModId}] SyncStaminaState: Syncing stamina data for {_sapi.World.AllOnlinePlayers.Length} online players");
+        }
+                
                 // Sync stamina state for all online players
                 foreach (var player in _sapi.World.AllOnlinePlayers)
                 {
                     // Get player entity
                     var playerEntity = player.Entity;
-                    if (playerEntity == null) continue;
+                    if (playerEntity == null) 
+                    {
+                        Logger.Warning($"[{ModId}] SyncStaminaState: Entity null for player {player.PlayerName}");
+                        continue;
+                    }
                     
                     // Get stamina behavior
                     var staminaBehavior = playerEntity.GetBehavior<EntityBehaviorVigorStamina>();
-                    if (staminaBehavior == null) continue;
+                    if (staminaBehavior == null) 
+                    {
+                        Logger.Warning($"[{ModId}] SyncStaminaState: EntityBehaviorVigorStamina not found for player {player.PlayerName}");
+                        
+                        // Check if the behavior exists at all in the entity's behavior list
+                        // List behavior types by enumerating each behavior individually
+                        // Note: Behaviors must be accessed through GetBehavior<T>() method
+                        if (CurrentConfig.DebugMode)
+                {
+                    Logger.Debug($"[{ModId}] SyncStaminaState: Checking for behaviors on player {player.PlayerName}...");
+                }
+                        continue;
+                    }
                     
                     // Create packet with current state
                     var packet = new StaminaStatePacket
@@ -170,17 +248,25 @@ namespace Vigor
                     };
                     
                     // Send to player (cast to IServerPlayer is safe since we're in server-side code)
-                    _serverNetworkChannel.SendPacket(packet, player as IServerPlayer);
-                    
-                    if (CurrentConfig.DebugMode && _sapi.World.Rand.NextDouble() < 0.05) // Only log occasionally
+                    var serverPlayer = player as IServerPlayer;
+                    if (serverPlayer == null)
                     {
-                        _sapi.Logger.Debug($"[{ModId}] Synced stamina state for {player.PlayerName}: {packet.CurrentStamina}/{packet.MaxStamina}, Exhausted: {packet.IsExhausted}");
+                        Logger.Warning($"[{ModId}] SyncStaminaState: Failed to cast player {player.PlayerName} to IServerPlayer");
+                        continue;
+                    }
+                    
+                    _serverNetworkChannel.SendPacket(packet, serverPlayer);
+                    
+                    // Log more frequently when in debug mode to identify synchronization issues
+                    if (CurrentConfig.DebugMode && (_sapi.World.Rand.NextDouble() < 0.2)) // Increased log frequency to 20%
+                    {
+                        _sapi.Logger.Debug($"[{ModId}] SyncStaminaState: Sent packet to {player.PlayerName}: {packet.CurrentStamina}/{packet.MaxStamina}, Exhausted: {packet.IsExhausted}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                _sapi.Logger.Error($"[{ModId}] Error syncing stamina state: {ex.Message}");
+                _sapi.Logger.Error($"[{ModId}] Error syncing stamina state: {ex.Message}\nStack trace: {ex.StackTrace}");
             }
         }
         
@@ -223,7 +309,37 @@ namespace Vigor
             // Listen for player disconnect to clean up sync state
             api.Event.PlayerDisconnect += OnPlayerDisconnect;
             
+            // Listen for player join to attach behavior
+            api.Event.PlayerJoin += OnPlayerJoin;
+            
             if (CurrentConfig.DebugMode) Logger.Notification($"[{ModId}] Server-side systems started with state synchronization.");
+        }
+
+        /// <summary>
+        /// Called when a player joins the server, attaches the stamina behavior to them
+        /// </summary>
+        private void OnPlayerJoin(IServerPlayer player)
+        {
+            try
+            {
+                if (player?.Entity == null)
+                {
+                    Logger.Warning($"[{ModId}] OnPlayerJoin: Player entity is null, cannot attach stamina behavior");
+                    return;
+                }
+
+                // Check if the behavior already exists (shouldn't, but let's be safe)
+                if (player.Entity.GetBehavior<EntityBehaviorVigorStamina>() == null)
+                {
+                    // Add the behavior to the player entity
+                    player.Entity.AddBehavior(new EntityBehaviorVigorStamina(player.Entity));
+                    Logger.Event($"[{ModId}] Attached vigor stamina behavior to player {player.PlayerName}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"[{ModId}] Error attaching stamina behavior to player: {ex.Message}\n{ex.StackTrace}");
+            }
         }
 
         /// <summary>

@@ -92,6 +92,17 @@ if (Test-Path $ZipFilePath) {
 Write-Host "Creating zip file '$ZipFilePath'"
 Compress-Archive -Path "$TempDir\*" -DestinationPath $ZipFilePath
 
+# Copy to server location for automation
+$ServerPath = "\\x3200\wwwroot\vigor_debug.zip"
+Write-Host "Copying zip to server path: $ServerPath" -ForegroundColor Cyan
+try {
+    Copy-Item -Path $ZipFilePath -Destination $ServerPath -Force
+    Write-Host "Successfully copied zip to server for automated deployment" -ForegroundColor Green
+} catch {
+    Write-Host "Warning: Failed to copy to server path. Error: $_" -ForegroundColor Yellow
+    Write-Host "Continuing with local deployment..." -ForegroundColor Yellow
+}
+
 # Delete old config if it exists
 if (Test-Path "C:\Users\chris\AppData\Roaming\VintagestoryData\ModConfig\vigor.json") {
     Write-Host "Removing old config at 'C:\Users\chris\AppData\Roaming\VintagestoryData\ModConfig\vigor.json'"
