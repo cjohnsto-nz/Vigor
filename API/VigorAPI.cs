@@ -1,0 +1,365 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using Vintagestory.API.Client;
+using Vintagestory.API.Common;
+using Vintagestory.API.Datastructures;
+using Vintagestory.API.Server;
+using Vigor.Behaviors;
+using Vigor.Utils;
+
+namespace Vigor.API
+{
+    /// <summary>
+    /// Implementation of the Vigor API for external mod consumption
+    /// </summary>
+    public class VigorAPI : IVigorAPI
+    {
+        private readonly ICoreAPI _api;
+        private bool _lastExhaustedState = false; // Track last exhaustion state to avoid excessive logging
+        
+        // Dictionary to track active continuous drains by player and drain ID
+        // Key: PlayerUID, Value: Dictionary of drainId -> amountPerSecond
+        private readonly Dictionary<string, Dictionary<string, float>> _activeStaminaDrains = new Dictionary<string, Dictionary<string, float>>();
+
+        public VigorAPI(ICoreAPI api)
+        {
+            _api = api;
+        }
+
+        /// <summary>
+        /// Gets the EntityBehaviorVigorStamina for a player, or null if not found
+        /// </summary>
+        private EntityBehaviorVigorStamina GetStaminaBehavior(EntityPlayer player)
+        {
+            if (player == null) return null;
+            
+            return player.GetBehavior<EntityBehaviorVigorStamina>();
+        }
+
+        /// <inheritdoc />
+        public float GetCurrentStamina(EntityPlayer player)
+        {
+            // On client side, use the synchronized state
+            if (_api.Side == EnumAppSide.Client && player != null)
+            {
+                ICoreClientAPI capi = _api as ICoreClientAPI;
+                if (capi?.World?.Player?.Entity == player)
+                {
+                    string playerUID = capi.World.Player.PlayerUID;
+                    var syncedState = VigorModSystem.Instance.GetClientStaminaState(playerUID);
+                    if (syncedState != null)
+                    {
+                        return syncedState.CurrentStamina;
+                    }
+                    // Fall through to behavior check if no sync data
+                }
+            }
+            
+            // Default/server behavior
+            var behavior = GetStaminaBehavior(player);
+            return behavior?.CurrentStamina ?? -1;
+        }
+
+        /// <inheritdoc />
+        public float GetMaxStamina(EntityPlayer player)
+        {
+            // On client side, use the synchronized state
+            if (_api.Side == EnumAppSide.Client && player != null)
+            {
+                ICoreClientAPI capi = _api as ICoreClientAPI;
+                if (capi?.World?.Player?.Entity == player)
+                {
+                    string playerUID = capi.World.Player.PlayerUID;
+                    var syncedState = VigorModSystem.Instance.GetClientStaminaState(playerUID);
+                    if (syncedState != null)
+                    {
+                        return syncedState.MaxStamina;
+                    }
+                    // Fall through to behavior check if no sync data
+                }
+            }
+            
+            // Default/server behavior
+            var behavior = GetStaminaBehavior(player);
+            return behavior?.MaxStamina ?? -1;
+        }
+
+        /// <inheritdoc />
+        public bool IsExhausted(EntityPlayer player)
+        {
+            // On client side, use the synchronized state
+            if (_api.Side == EnumAppSide.Client && player != null)
+            {
+                ICoreClientAPI capi = _api as ICoreClientAPI;
+                if (capi?.World?.Player?.Entity == player)
+                {
+                    string playerUID = capi.World.Player.PlayerUID;
+                    var syncedState = VigorModSystem.Instance.GetClientStaminaState(playerUID);
+                    if (syncedState != null)
+                    {
+                        // Log only when state changes to minimize log spam
+                        if (syncedState.IsExhausted != _lastExhaustedState)
+                        {
+                            _api.Logger.Debug("[Vigor:API] Client IsExhausted changed: {0} -> {1}", _lastExhaustedState, syncedState.IsExhausted);
+                            _lastExhaustedState = syncedState.IsExhausted;
+                        }
+                        return syncedState.IsExhausted;
+                    }
+                    // Fall through to behavior check if no sync data
+                }
+            }
+            
+            // Default/server behavior
+            var behavior = GetStaminaBehavior(player);
+            
+            // Reduce logging to only log when behavior is null or exhausted state changes
+            if (behavior == null)
+            {
+                _api.Logger.Debug("[Vigor:API] IsExhausted called for player {0}, behavior is null", (player != null ? player.ToString() : "null"));
+                return false;
+            }
+            
+            return behavior.IsExhausted;
+        }
+
+        /// <inheritdoc />
+        public bool ConsumeStamina(EntityPlayer player, float amount, bool ignoreFatigue = false)
+        {
+            _api.Logger.Event("[Vigor:API] ConsumeStamina called for player {0}, amount {1}, ignoreFatigue {2}", (player != null ? player.ToString() : "null"), amount, ignoreFatigue);
+            
+            var behavior = GetStaminaBehavior(player);
+            if (behavior == null)
+            {
+                _api.Logger.Warning("[Vigor:API] No stamina behavior found for player {0}", (player != null ? player.ToString() : "null"));
+                return true; // Allow action if no behavior exists
+            }
+            
+            _api.Logger.Event("[Vigor:API] Current stamina: {0}, Max stamina: {1}, Amount requested: {2}", behavior.CurrentStamina, behavior.MaxStamina, amount);
+            
+            // Always allow consumption, even if it would go beyond available stamina
+            // Just clamp the result to 0 (fully exhausted)
+            
+            // Consume stamina - server side only to avoid sync issues
+            _api.Logger.Event("[Vigor:API] Current API side: {0}", _api.Side);
+            if (_api.Side == EnumAppSide.Server)
+            {
+                _api.Logger.Event("[Vigor:API] Consuming {0} stamina on server for player {1}", amount, (player != null ? player.ToString() : "null"));
+                
+                // Calculate new stamina value with clamping to 0
+                float newStamina = Math.Max(0, behavior.CurrentStamina - amount);
+                float actualConsumed = behavior.CurrentStamina - newStamina;
+                
+                // Apply the clamped value
+                behavior.CurrentStamina = newStamina;
+                
+                if (actualConsumed < amount)
+                {
+                    _api.Logger.Event("[Vigor:API] Consumed {0} stamina (clamped from {1}), player {2} is now exhausted", 
+                        actualConsumed, amount, (player != null ? player.ToString() : "null"));
+                }
+                
+                // Mark player as having performed a fatiguing action
+                if (!ignoreFatigue)
+                {
+                    _api.Logger.Event("[Vigor:API] Resetting fatigue timer for player {0}", (player != null ? player.ToString() : "null"));
+                    behavior.ResetFatigueTimer();
+                }
+                
+                _api.Logger.Event("[Vigor:API] Marking stamina dirty for player {0}, new value: {1}", (player != null ? player.ToString() : "null"), behavior.CurrentStamina);
+                behavior.MarkDirty();
+            }
+            else
+            {
+                _api.Logger.Warning("[Vigor:API] Not consuming stamina on client side for player {0}", (player != null ? player.ToString() : "null"));
+            }
+            
+            _api.Logger.Event("[Vigor:API] ConsumeStamina returning true for player {0}", (player != null ? player.ToString() : "null"));
+            return true;
+        }
+
+        /// <inheritdoc />
+        public bool DrainStamina(EntityPlayer player, float amountPerSecond, float deltaTime)
+        {
+            float amount = amountPerSecond * deltaTime;
+            
+            // Get stamina behavior directly
+            if (_api.Side == EnumAppSide.Server)
+            {
+                var behavior = GetStaminaBehavior(player);
+                if (behavior != null)
+                {
+                    // Always reset fatigue timer during continuous drain to prevent regeneration
+                    behavior.ResetFatigueTimer();
+                    _api.Logger.Event("[Vigor:API] Fatigue timer reset during continuous drain for player {0}", player.ToString());
+                }
+            }
+            
+            // Now consume the stamina (ignoreFatigue keeps it working the same otherwise)
+            return ConsumeStamina(player, amount, false);
+        }
+        
+        /// <inheritdoc />
+        public bool StartStaminaDrain(EntityPlayer player, string drainId, float amountPerSecond)
+        {
+            if (player == null || string.IsNullOrEmpty(drainId) || amountPerSecond <= 0)
+                return false;
+            
+            // Don't allow starting a drain if the player is already exhausted
+            if (!CanPerformStaminaAction(player))
+            {
+                _api.Logger.Event("[Vigor:API] Cannot start drain '{0}' for player {1}: already exhausted", 
+                    drainId, player.ToString());
+                return false;
+            }
+            
+            string playerUID = player.PlayerUID;
+            
+            // Initialize drain collection for this player if needed
+            if (!_activeStaminaDrains.ContainsKey(playerUID))
+            {
+                _activeStaminaDrains[playerUID] = new Dictionary<string, float>();
+            }
+            
+            // Add or update the drain rate
+            _activeStaminaDrains[playerUID][drainId] = amountPerSecond;
+            
+            _api.Logger.Event("[Vigor:API] Started drain '{0}' for player {1} at rate {2}/sec", 
+                drainId, player.ToString(), amountPerSecond);
+                
+            // Register for server tick to apply continuous drain
+            if (_api.Side == EnumAppSide.Server)
+            {
+                var serverApi = _api as ICoreServerAPI;
+                if (serverApi != null)
+                {
+                    // Get the server instance of VigorModSystem using ModLoader instead of the static Instance
+                    var serverModSystem = serverApi.ModLoader.GetModSystem<VigorModSystem>();
+                    
+                    // Only register once (system will handle multiple drains)
+                    if (!serverModSystem.IsStaminaDrainActive())
+                    {
+                        _api.Logger.Event($"[Vigor:API] Registering server-side drain tick using ModLoader.GetModSystem<VigorModSystem>(): {serverModSystem}");
+                        serverModSystem.StartStaminaDrainTick(this);
+                    }
+                }
+            }
+            
+            return true;
+        }
+        
+        /// <inheritdoc />
+        public void StopStaminaDrain(EntityPlayer player, string drainId)
+        {
+            if (player == null || string.IsNullOrEmpty(drainId))
+                return;
+                
+            string playerUID = player.PlayerUID;
+            
+            // Remove the drain if it exists
+            if (_activeStaminaDrains.TryGetValue(playerUID, out var drains))
+            {
+                if (drains.ContainsKey(drainId))
+                {
+                    drains.Remove(drainId);
+                    _api.Logger.Event("[Vigor:API] Stopped drain '{0}' for player {1}", drainId, player.ToString());
+                    
+                    // Remove empty collections
+                    if (drains.Count == 0)
+                    {
+                        _activeStaminaDrains.Remove(playerUID);
+                    }
+                }
+            }
+            
+            // Stop the server tick if no more active drains
+            if (_api.Side == EnumAppSide.Server && _activeStaminaDrains.Count == 0)
+            {
+                var serverApi = _api as ICoreServerAPI;
+                if (serverApi != null)
+                {
+                    // Get the server instance of VigorModSystem using ModLoader
+                    var serverModSystem = serverApi.ModLoader.GetModSystem<VigorModSystem>();
+                    serverModSystem.StopStaminaDrainTick();
+                }
+            }
+        }
+        
+        /// <inheritdoc />
+        public bool CanPerformStaminaAction(EntityPlayer player)
+        {
+            // Simply check if the player is exhausted
+            return !IsExhausted(player);
+        }
+        
+        /// <summary>
+        /// Process all active stamina drains for the current tick
+        /// This should be called by the VigorModSystem on the server side
+        /// </summary>
+        /// <param name="deltaTime">Time elapsed since last tick</param>
+        public void ProcessActiveStaminaDrains(float deltaTime)
+        {
+            if (_api.Side != EnumAppSide.Server)
+                return;
+            
+            // Log active drain tick if there are any drains
+            if (_activeStaminaDrains.Count > 0)
+            {
+                _api.Logger.Event("[Vigor:API] Server processing {0} active drain entries with deltaTime {1}", 
+                    _activeStaminaDrains.Count, deltaTime);
+            }
+                
+            // Process all active drains
+            foreach (var playerEntry in _activeStaminaDrains.ToList()) // Make a copy to safely remove entries
+            {
+                string playerUID = playerEntry.Key;
+                var player = _api.World.PlayerByUid(playerUID)?.Entity as EntityPlayer;
+                
+                if (player == null)
+                {
+                    // Player no longer exists, remove all their drains
+                    _activeStaminaDrains.Remove(playerUID);
+                    _api.Logger.Event("[Vigor:API] Removed drains for non-existent player {0}", playerUID);
+                    continue;
+                }
+                
+                // Get total drain rate for this player
+                float totalDrainRate = 0f;
+                var activeDrains = new List<string>();
+                foreach (var drain in playerEntry.Value)
+                {
+                    totalDrainRate += drain.Value;
+                    activeDrains.Add(drain.Key);
+                }
+                
+                _api.Logger.Event("[Vigor:API] Processing {0} drains for player {1}: {2} (total rate: {3}/sec)", 
+                    activeDrains.Count, player.ToString(), string.Join(", ", activeDrains), totalDrainRate);
+                
+                // Apply the drain
+                float amount = totalDrainRate * deltaTime;
+                if (amount > 0)
+                {
+                    _api.Logger.Event("[Vigor:API] Draining {0} stamina from player {1} for continuous actions", 
+                        amount, player.ToString());
+                        
+                    bool success = ConsumeStamina(player, amount, false);
+                    
+                    // Check if player is now exhausted
+                    if (IsExhausted(player))
+                    {
+                        _api.Logger.Event("[Vigor:API] Player {0} is now exhausted from continuous drain", player.ToString());
+                        
+                        // Player is exhausted, notify interested parties
+                        var eventArgs = new TreeAttribute();
+                        eventArgs.SetString("playeruid", playerUID);
+                        _api.Event.PushEvent("vigor:playerexhausted", eventArgs);
+                        
+                        // Clear all drains for this player
+                        _activeStaminaDrains.Remove(playerUID);
+                        _api.Logger.Event("[Vigor:API] All drains cleared for exhausted player {0}", player.ToString());
+                    }
+                }
+            }
+        }
+    }
+}

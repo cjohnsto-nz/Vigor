@@ -15,8 +15,11 @@ namespace Vigor.Hud
 
         public HudVigorDebug(ICoreClientAPI capi) : base(capi)
         {
-            _listenerId = capi.Event.RegisterGameTickListener(OnGameTick, 250);
-            ComposeDialog();
+            if (VigorModSystem.Instance.CurrentConfig.DebugMode)
+            {
+                _listenerId = capi.Event.RegisterGameTickListener(OnGameTick, 250);
+                ComposeDialog();
+            }
         }
 
         public override void OnOwnPlayerDataReceived()
@@ -126,6 +129,7 @@ namespace Vigor.Hud
 
                 sb.AppendLine("\n--- Player State (Debug) ---");
                 sb.AppendLine($"Idle: {staminaTree.GetBool("debug_isIdle")}");
+                sb.AppendLine($"Sitting: {staminaTree.GetBool("debug_isSitting")}");
                 sb.AppendLine($"Sprinting: {staminaTree.GetBool("debug_isSprinting")}");
                 sb.AppendLine($"Swimming: {staminaTree.GetBool("debug_isSwimming")}");
                 sb.AppendLine($"Jumping: {staminaTree.GetBool("debug_isJumping")}");

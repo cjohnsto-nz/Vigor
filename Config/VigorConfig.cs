@@ -14,12 +14,15 @@ namespace Vigor.Config
         public float StaminaExhaustionThreshold { get; set; } = 0f; // Stamina level at which player is exhausted
         public float StaminaRequiredToRecoverPercent { get; set; } = 0.4f; // Percentage of max stamina needed to recover from exhaustion (e.g., 0.33 for 33%)
         public float IdleStaminaRegenMultiplier { get; set; } = 2f; // Multiplier for idle regen
+        public float SittingStaminaRegenMultiplier { get; set; } = 1.5f; // Multiplier for sitting regen
+        public float SprintDetectionSpeedThreshold { get; set; } = 0.005f; // Threshold for sprint detection
+
         
         // Syncing interval (for client-server updates)
         public float StaminaSyncIntervalSeconds { get; set; } = 0.25f;
         
         // --- Action Costs ---
-        public float SprintStaminaCostPerSecond { get; set; } = 10f;
+        public float SprintStaminaCostPerSecond { get; set; } = 8f;
         public float SwimStaminaCostPerSecond { get; set; } = 3f;
         public float JumpStaminaCost { get; set; } = 10f;
         

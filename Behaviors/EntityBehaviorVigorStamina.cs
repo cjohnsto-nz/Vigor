@@ -6,6 +6,7 @@ using Vigor.Config;
 using System;
 using Vintagestory.API.Server;
 using Vintagestory.API.Config;
+using Vigor.API;
 using Vigor.Utils;
 
 namespace Vigor.Behaviors
@@ -141,6 +142,23 @@ namespace Vigor.Behaviors
                 Logger.Notification($"[{ModId}] Initialized VigorStamina attributes for entity {entity.EntityId}. DebugMode: {Config.DebugMode}");
                 return;
             }
+            
+            // Check if base max stamina needs updating due to config changes
+            float storedBaseMaxStamina = StaminaTree.GetFloat("maxStamina", -1);
+            if (Math.Abs(storedBaseMaxStamina - Config.MaxStamina) > 0.01f)
+            {
+                Logger.Notification($"[{ModId}] Updating base max stamina for entity {entity.EntityId} from {storedBaseMaxStamina} to {Config.MaxStamina} due to config change");
+                MaxStamina = Config.MaxStamina;
+                
+                // Adjust current stamina proportionally to maintain the same percentage
+                float currentStaminaRatio = storedBaseMaxStamina > 0 ? (CurrentStamina / storedBaseMaxStamina) : 1f;
+                CurrentStamina = Config.MaxStamina * currentStaminaRatio;
+                
+                // Update calculated max stamina immediately
+                StaminaTree.SetFloat("calculatedMaxStamina", Config.MaxStamina * _nutritionBonuses.MaxStaminaModifier);
+                maxStaminaUpdated = true;
+                MarkDirty();
+            }
 
             if (entity is not EntityPlayer plr || plr.Player?.WorldData.CurrentGameMode == EnumGameMode.Creative)
             {
@@ -149,6 +167,8 @@ namespace Vigor.Behaviors
 
             // Determine if player is effectively stationary. Calculated early for use in both cost and regen logic.
             bool isPlayerIdle = plr.ServerPos.Motion.LengthSq() < 0.0001; // Threshold for being considered idle (e.g., speed < 0.01 units/sec)
+
+            bool isPlayerSitting = plr.ServerControls.FloorSitting; // True if player is sitting on the floor
 
             // Cache raw player inputs at the beginning of the tick.
             bool physicalSprintKeyHeldThisTick = plr.ServerControls.Sprint;
@@ -179,7 +199,7 @@ namespace Vigor.Behaviors
             
             // Check for fatiguing actions
             bool isJumping = plr.Controls.Jump && !plr.OnGround && !_jumpCooldown;
-            bool isSprinting = physicalSprintKeyHeldThisTick && plr.ServerPos.Motion.LengthSq() > 0.01;
+            bool isSprinting = physicalSprintKeyHeldThisTick && plr.ServerPos.Motion.LengthSq() > Config.SprintDetectionSpeedThreshold;
             bool isSwimming = plr.FeetInLiquid && !plr.OnGround;
 
             float costPerSecond = 0f;
@@ -256,9 +276,17 @@ namespace Vigor.Behaviors
             if (!overallRegenPreventedThisTick)
             {
                 actualStaminaGainPerSecond = Config.StaminaGainPerSecond * _nutritionBonuses.RecoveryRateModifier;
+
+                // If player is idle, apply idle regen multiplier
                 if (isPlayerIdle && plr.OnGround && !plr.FeetInLiquid)
                 {
                     actualStaminaGainPerSecond *= Config.IdleStaminaRegenMultiplier;
+
+                    // If player is sitting, apply sitting regen multiplier
+                    if (isPlayerSitting)
+                    {
+                        actualStaminaGainPerSecond *= Config.SittingStaminaRegenMultiplier;
+                    }
                 }
             }
 
@@ -369,6 +397,7 @@ namespace Vigor.Behaviors
             bool debugStateChanged = false;
             // States
             debugStateChanged |= SetDebugBool("debug_isIdle", isPlayerIdle);
+            debugStateChanged |= SetDebugBool("debug_isSitting", isPlayerSitting);
             debugStateChanged |= SetDebugBool("debug_isSprinting", isSprinting);
             debugStateChanged |= SetDebugBool("debug_isSwimming", isSwimming);
             debugStateChanged |= SetDebugBool("debug_isJumping", isJumping);
@@ -413,9 +442,21 @@ namespace Vigor.Behaviors
             return true;
         }
 
-        private void MarkDirty()
+        /// <summary>
+        /// Marks the stamina attributes as dirty to sync with clients
+        /// </summary>
+        public void MarkDirty()
         {
             entity.WatchedAttributes.MarkPathDirty(Name);
+        }
+        
+        /// <summary>
+        /// Resets the fatigue timer, indicating a fatiguing action has occurred
+        /// For use by the public API
+        /// </summary>
+        public void ResetFatigueTimer()
+        {
+            _timeSinceLastFatiguingAction = 0f;
         }
 
         public override string PropertyName()
