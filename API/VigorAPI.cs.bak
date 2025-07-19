@@ -313,8 +313,8 @@ namespace Vigor.API
             // Check if already registered
             if (_registeredActionTypes.TryGetValue(actionId, out var existingAction))
             {
-                var modSystemActions = _api.ModLoader.GetModSystem<VigorModSystem>();
-                _api.Logger.Warning($"[{modSystemActions.ModId}] Action type {actionId} already registered by {existingAction.ModId}");
+                var modSystem = _api.ModLoader.GetModSystem<VigorModSystem>();
+                _api.Logger.Warning($"[{modSystem.ModId}] Action type {actionId} already registered by {existingAction.ModId}");
                 return existingAction;
             }
             
@@ -362,8 +362,8 @@ namespace Vigor.API
             // Check if already registered
             if (_registeredModifiers.TryGetValue(modifierId, out var existingModifier))
             {
-                var modSystemModifiers = _api.ModLoader.GetModSystem<VigorModSystem>();
-                _api.Logger.Warning($"[{modSystemModifiers.ModId}] Modifier {modifierId} already registered by {existingModifier.ModId}");
+                var modSystem = _api.ModLoader.GetModSystem<VigorModSystem>();
+                _api.Logger.Warning($"[{modSystem.ModId}] Modifier {modifierId} already registered by {existingModifier.ModId}");
                 return existingModifier;
             }
             
@@ -420,8 +420,7 @@ namespace Vigor.API
                 }
                 catch (Exception ex)
                 {
-                    var vigorSystem = _api.ModLoader.GetModSystem<VigorModSystem>();
-                    _api.Logger.Error($"[{vigorSystem.ModId}] Error applying modifier {modifier.ModifierId}: {ex.Message}");
+                    _api.Logger.Error($"[{VigorModSystem.ModId}] Error applying modifier {modifier.ModifierId}: {ex.Message}");
                 }
             }
             
@@ -460,8 +459,7 @@ namespace Vigor.API
                 }
                 catch (Exception ex)
                 {
-                    var vigorSystem = _api.ModLoader.GetModSystem<VigorModSystem>();
-                    _api.Logger.Error($"[{vigorSystem.ModId}] Error applying modifier {modifier.ModifierId}: {ex.Message}");
+                    _api.Logger.Error($"[{VigorModSystem.ModId}] Error applying modifier {modifier.ModifierId}: {ex.Message}");
                 }
             }
             
