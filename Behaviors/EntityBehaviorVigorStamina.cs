@@ -142,6 +142,23 @@ namespace Vigor.Behaviors
                 Logger.Notification($"[{ModId}] Initialized VigorStamina attributes for entity {entity.EntityId}. DebugMode: {Config.DebugMode}");
                 return;
             }
+            
+            // Check if base max stamina needs updating due to config changes
+            float storedBaseMaxStamina = StaminaTree.GetFloat("maxStamina", -1);
+            if (Math.Abs(storedBaseMaxStamina - Config.MaxStamina) > 0.01f)
+            {
+                Logger.Notification($"[{ModId}] Updating base max stamina for entity {entity.EntityId} from {storedBaseMaxStamina} to {Config.MaxStamina} due to config change");
+                MaxStamina = Config.MaxStamina;
+                
+                // Adjust current stamina proportionally to maintain the same percentage
+                float currentStaminaRatio = storedBaseMaxStamina > 0 ? (CurrentStamina / storedBaseMaxStamina) : 1f;
+                CurrentStamina = Config.MaxStamina * currentStaminaRatio;
+                
+                // Update calculated max stamina immediately
+                StaminaTree.SetFloat("calculatedMaxStamina", Config.MaxStamina * _nutritionBonuses.MaxStaminaModifier);
+                maxStaminaUpdated = true;
+                MarkDirty();
+            }
 
             if (entity is not EntityPlayer plr || plr.Player?.WorldData.CurrentGameMode == EnumGameMode.Creative)
             {
