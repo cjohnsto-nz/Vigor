@@ -15,8 +15,11 @@ namespace Vigor.Hud
 
         public HudVigorDebug(ICoreClientAPI capi) : base(capi)
         {
-            _listenerId = capi.Event.RegisterGameTickListener(OnGameTick, 250);
-            ComposeDialog();
+            if (VigorModSystem.Instance.CurrentConfig.DebugMode)
+            {
+                _listenerId = capi.Event.RegisterGameTickListener(OnGameTick, 250);
+                ComposeDialog();
+            }
         }
 
         public override void OnOwnPlayerDataReceived()
