@@ -5,7 +5,7 @@ namespace Vigor.Config
     public class VigorConfig
     {
         // General Settings
-        public bool DebugMode { get; set; } = false; // Disabled by default
+        public bool DebugMode { get; set; } = true; // Disabled by default
 
         // Stamina Mechanics
         public float MaxStamina { get; set; } = 150f;
@@ -57,10 +57,15 @@ namespace Vigor.Config
         public float FruitJumpCostBonusAtMax { get; set; } = 0.3f; // -50% jump cost
         public float FruitDrainRateBonusAtMax { get; set; } = 0.2f; // -20% drain rate
         
+        // --- Pooled Nutrition Effects ---
+        // These effects are based on the combined nutrition levels across all categories
+        public float PooledNutritionRecoveryDelayReductionAtMax { get; set; } = 0.5f; // -50% recovery delay when all nutrition maxed
+        
         // Minimum modifier values (to prevent extreme effects)
         public float MinDrainRateModifier { get; set; } = 0.1f; // Minimum 10% of normal drain rate
         public float MinJumpCostModifier { get; set; } = 0.1f; // Minimum 10% of normal jump cost
         public float MinRecoveryThresholdModifier { get; set; } = 0.1f; // Minimum 10% of normal recovery threshold
+        public float MinRecoveryDelayModifier { get; set; } = 0.5f; // Minimum 50% of normal recovery delay
         
 
         public VigorConfig()

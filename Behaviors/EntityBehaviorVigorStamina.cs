@@ -252,11 +252,11 @@ namespace Vigor.Behaviors
             float requiredCooldown;
             if (_isInitialExhaustion)
             {
-                requiredCooldown = Config.ExhaustionLossCooldownSeconds;
+                requiredCooldown = Config.ExhaustionLossCooldownSeconds * _nutritionBonuses.RecoveryDelayModifier;
             }
             else
             {
-                requiredCooldown = Config.StaminaLossCooldownSeconds;
+                requiredCooldown = Config.StaminaLossCooldownSeconds * _nutritionBonuses.RecoveryDelayModifier;
             }
 
             bool cooldownActive = _timeSinceLastFatiguingAction < requiredCooldown;
@@ -416,6 +416,7 @@ namespace Vigor.Behaviors
             debugStateChanged |= SetDebugFloat("debug_mod_drainRate", _nutritionBonuses.DrainRateModifier);
             debugStateChanged |= SetDebugFloat("debug_mod_jumpCost", _nutritionBonuses.JumpCostModifier);
             debugStateChanged |= SetDebugFloat("debug_mod_recoveryThreshold", _nutritionBonuses.RecoveryThresholdModifier);
+            debugStateChanged |= SetDebugFloat("debug_mod_recoveryDelay", _nutritionBonuses.RecoveryDelayModifier);
             
 
             if (staminaChanged || exhaustionChanged || maxStaminaUpdated || previousSinkingState != shouldBeSinking || debugStateChanged)

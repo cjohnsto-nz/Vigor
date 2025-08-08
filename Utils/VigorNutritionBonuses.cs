@@ -19,6 +19,7 @@ namespace Vigor.Utils
         public float DrainRateModifier { get; private set; }
         public float JumpCostModifier { get; private set; }
         public float RecoveryThresholdModifier { get; private set; }
+        public float RecoveryDelayModifier { get; private set; }
 
         /// <summary>
         /// Reads the entity's current nutrition levels and recalculates all cached modifier values.
@@ -42,6 +43,11 @@ namespace Vigor.Utils
             DrainRateModifier = Math.Max(config.MinDrainRateModifier, 1f - (vegetable * config.VegetableDrainRateBonusAtMax) - (fruit * config.FruitDrainRateBonusAtMax));
             JumpCostModifier = Math.Max(config.MinJumpCostModifier, 1f - (fruit * config.FruitJumpCostBonusAtMax) - (grain * config.GrainJumpCostBonusAtMax));
             RecoveryThresholdModifier = Math.Max(config.MinRecoveryThresholdModifier, 1f - (dairy * config.DairyRecoveryThresholdBonusAtMax) - (vegetable * config.VegetableRecoveryThresholdBonusAtMax));
+            
+            // Calculate pooled nutrition bonus for recovery delay reduction
+            // Average all nutrition levels and apply the pooled bonus
+            float averageNutrition = (fruit + grain + protein + vegetable + dairy) / 5f;
+            RecoveryDelayModifier = Math.Max(config.MinRecoveryDelayModifier, 1f - (averageNutrition * config.PooledNutritionRecoveryDelayReductionAtMax));
         }
 
         /// <summary>
