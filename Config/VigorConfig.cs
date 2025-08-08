@@ -21,6 +21,18 @@ namespace Vigor.Config
         // Syncing interval (for client-server updates)
         public float StaminaSyncIntervalSeconds { get; set; } = 0.25f;
         
+        // --- Client-Side Prediction Settings ---
+        public bool EnableClientSidePrediction { get; set; } = true; // Enable client-side stamina prediction for responsiveness
+        public float ClientPredictionUpdateRate { get; set; } = 16f; // Client prediction update interval in milliseconds (~60 FPS)
+        public float ServerReconciliationRate { get; set; } = 100f; // Server reconciliation interval in milliseconds (10 FPS)
+        public bool EnableServerReconciliation { get; set; } = false; // Enable server reconciliation for UI (can cause jankiness)
+        public float ReconciliationThreshold { get; set; } = 5.0f; // Threshold for server reconciliation
+        public float NutritionUpdateRate { get; set; } = 500f; // How often to update nutrition bonuses (ms)
+        
+        // Directional interpolation thresholds
+        public float InterpolationThresholdUp { get; set; } = 24.0f; // Threshold for smoothing stamina recovery (going up)
+        public float InterpolationThresholdDown { get; set; } = 6.0f; // Threshold for smoothing stamina drains (going down)
+        
         // --- Action Costs ---
         public float SprintStaminaCostPerSecond { get; set; } = 8f;
         public float SwimStaminaCostPerSecond { get; set; } = 3f;

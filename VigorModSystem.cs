@@ -14,7 +14,7 @@ namespace Vigor
     public class VigorModSystem : ModSystem
     {
         private const string NETWORK_CHANNEL = "vigor:statesync";
-        private const float SYNC_INTERVAL_SECONDS = 1.0f; // How often to sync state (in seconds)
+        private const float SYNC_INTERVAL_SECONDS = 0.1f; // How often to sync state (in seconds) - 10 FPS
         
         private ICoreClientAPI _capi;
         private ICoreServerAPI _sapi;

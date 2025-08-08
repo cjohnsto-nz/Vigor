@@ -1,5 +1,6 @@
 using System;
 using Vigor.Behaviors;
+using Vigor.Client;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 
@@ -9,12 +10,44 @@ namespace Vigor.Hud
     {
         private GuiElementStatbar _staminaStatbar;
         private GuiElementStatbar _recoveryThresholdStatbar;
-
+        private ClientStaminaPredictor _staminaPredictor;
+        private long _clientTickListener;
+        private long _serverSyncListener;
+        private long _visualUpdateListener;
+        
+        // Client-side state for smooth updates
+        private float _displayedStamina;
+        private float _displayedMaxStamina;
+        private bool _displayedIsExhausted;
+        private float _displayedRecoveryThreshold;
 
         public HudVigorBar(ICoreClientAPI capi) : base(capi)
         {
+            var config = VigorModSystem.Instance.CurrentConfig;
+            
             ComposeGuis();
-            capi.Event.RegisterGameTickListener(OnGameTick, 10);
+            
+            // Initialize client-side predictor if enabled
+            if (config.EnableClientSidePrediction)
+            {
+                _staminaPredictor = new ClientStaminaPredictor(capi, config);
+                _staminaPredictor.OnStaminaChanged += OnPredictedStaminaChanged;
+                
+                // High-frequency client-side updates for smooth prediction
+                _clientTickListener = capi.Event.RegisterGameTickListener(OnClientTick, (int)config.ClientPredictionUpdateRate);
+                
+                // Lower-frequency server sync for reconciliation
+                _serverSyncListener = capi.Event.RegisterGameTickListener(OnServerSync, (int)config.ServerReconciliationRate);
+                
+                // High-frequency visual updates for smooth UI (independent of value changes)
+                _visualUpdateListener = capi.Event.RegisterGameTickListener(OnVisualUpdate, 16); // Fixed 60+ FPS visual updates
+            }
+            else
+            {
+                // Fallback to traditional server-only updates
+                _serverSyncListener = capi.Event.RegisterGameTickListener(OnServerSync, 50); // 20 FPS fallback
+                _visualUpdateListener = capi.Event.RegisterGameTickListener(OnVisualUpdate, 50); // 20 FPS visual fallback
+            }
         }
 
         public override void OnOwnPlayerDataReceived()
@@ -23,7 +56,21 @@ namespace Vigor.Hud
             ComposeGuis(); // Recompose on player data received to ensure it's up to date
         }
 
-        private void OnGameTick(float dt)
+        /// <summary>
+        /// High-frequency client-side tick for smooth stamina prediction
+        /// </summary>
+        private void OnClientTick(float dt)
+        {
+            if (_staminaPredictor == null) return;
+            
+            // Update client-side prediction
+            _staminaPredictor.UpdatePrediction(dt);
+        }
+        
+        /// <summary>
+        /// Server sync to provide server values for interpolation
+        /// </summary>
+        private void OnServerSync(float dt)
         {
             var player = capi?.World?.Player;
             if (player?.Entity == null) return;
@@ -31,12 +78,47 @@ namespace Vigor.Hud
             var staminaTree = player.Entity.WatchedAttributes.GetTreeAttribute(EntityBehaviorVigorStamina.Name);
             if (staminaTree == null) return;
 
-            var currentStamina = staminaTree.GetFloat("currentStamina");
-            var maxStamina = staminaTree.GetFloat("calculatedMaxStamina", VigorModSystem.Instance.CurrentConfig.MaxStamina);
-            var isExhausted = staminaTree.GetBool("isExhausted");
+            // Get server values for interpolation
+            var serverStamina = staminaTree.GetFloat("currentStamina");
+            var serverMaxStamina = staminaTree.GetFloat("calculatedMaxStamina");
+            var serverIsExhausted = staminaTree.GetBool("isExhausted");
             var recoveryThreshold = staminaTree.GetFloat("debug_recoveryThreshold");
-
-            UpdateVigor(currentStamina, maxStamina, isExhausted, recoveryThreshold);
+            
+            // Update recovery threshold for debug display
+            _displayedRecoveryThreshold = recoveryThreshold;
+            
+            // Provide server values to interpolation system
+            if (_staminaPredictor != null)
+            {
+                _staminaPredictor.ReconcileWithServer(serverStamina, serverMaxStamina, serverIsExhausted);
+            }
+            else
+            {
+                // Fallback: direct server values when no predictor
+                _displayedStamina = serverStamina;
+                _displayedMaxStamina = serverMaxStamina;
+                _displayedIsExhausted = serverIsExhausted;
+            }
+        }
+        
+        /// <summary>
+        /// Called when client-side prediction updates stamina values
+        /// </summary>
+        private void OnPredictedStaminaChanged(float stamina, float maxStamina, bool isExhausted)
+        {
+            _displayedStamina = stamina;
+            _displayedMaxStamina = maxStamina;
+            _displayedIsExhausted = isExhausted;
+            
+            // Values updated, visual update will happen on next OnVisualUpdate tick
+        }
+        
+        /// <summary>
+        /// High-frequency visual updates for smooth UI regardless of value changes
+        /// </summary>
+        private void OnVisualUpdate(float dt)
+        {
+            UpdateVigorDisplay();
         }
 
         private void ComposeGuis()
@@ -110,23 +192,52 @@ namespace Vigor.Hud
             TryOpen();
         }
 
-        public void UpdateVigor(float current, float max, bool isExhausted, float recoveryThreshold)
+        /// <summary>
+        /// Updates the visual display using current stamina values
+        /// </summary>
+        private void UpdateVigorDisplay()
         {
             if (_staminaStatbar == null || _recoveryThresholdStatbar == null) return;
 
-            // Update main stamina bar
-            _staminaStatbar.SetValues(current, 0, max);
-            _staminaStatbar.ShouldFlash = isExhausted;
+            // Update main stamina bar with predicted values
+            _staminaStatbar.SetValues(_displayedStamina, 0, _displayedMaxStamina);
+            _staminaStatbar.ShouldFlash = _displayedIsExhausted;
             // The line interval should also be based on the *current* max stamina
             // Draw a line every 100 stamina points, similar to the vanilla hunger bar.
-            _staminaStatbar.SetLineInterval(1500f / max);
+            _staminaStatbar.SetLineInterval(1500f / _displayedMaxStamina);
             
             // Update recovery threshold bar
             // If exhausted, show the threshold. If not, set value to max, which hides it because HideWhenFull is true.
-            float recoveryValue = isExhausted ? recoveryThreshold : max;
-            _recoveryThresholdStatbar.SetValues(recoveryValue, 0, max);
-            _recoveryThresholdStatbar.SetLineInterval(1500f / max);
-
+            float recoveryValue = _displayedIsExhausted ? _displayedRecoveryThreshold : _displayedMaxStamina;
+            _recoveryThresholdStatbar.SetValues(recoveryValue, 0, _displayedMaxStamina);
+            _recoveryThresholdStatbar.SetLineInterval(1500f / _displayedMaxStamina);
+        }
+        
+        /// <summary>
+        /// Legacy method for backward compatibility - now uses display system
+        /// </summary>
+        public void UpdateVigor(float current, float max, bool isExhausted, float recoveryThreshold)
+        {
+            // Force sync with provided values (for external calls)
+            _staminaPredictor?.ForceSync(current, max, isExhausted);
+            _displayedRecoveryThreshold = recoveryThreshold;
+            UpdateVigorDisplay();
+        }
+        
+        public override void Dispose()
+        {
+            base.Dispose();
+            
+            // Unregister event listeners
+            if (_staminaPredictor != null)
+            {
+                _staminaPredictor.OnStaminaChanged -= OnPredictedStaminaChanged;
+            }
+            
+            // Unregister tick listeners
+            capi.Event.UnregisterGameTickListener(_clientTickListener);
+            capi.Event.UnregisterGameTickListener(_serverSyncListener);
+            capi.Event.UnregisterGameTickListener(_visualUpdateListener);
         }
 
         public override bool TryClose() => false;
