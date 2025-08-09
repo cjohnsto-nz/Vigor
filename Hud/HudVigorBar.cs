@@ -27,17 +27,25 @@ namespace Vigor.Hud
         private bool _displayedIsExhausted;
         private float _displayedRecoveryThreshold;
         private bool _hideStaminaOnFull;
+        // TEMP: hide stamina bar to verify recovery overlay independently
+        private bool _debugHideStaminaBar = false;
+        // Auto-hide controls
+        private bool _autoHideEnabled;
+        private bool _hudOpen;
+        private double _fullElapsed;
 
         public HudVigorBar(ICoreClientAPI capi) : base(capi)
         {
             var config = VigorModSystem.Instance.CurrentConfig;
             _useRadial = config.UseRadialHud;
             _hideStaminaOnFull = config.HideStaminaOnFull;
+            _autoHideEnabled = config.HideStaminaOnFull;
 
             // Only compose linear GUI when not using radial HUD
             if (!_useRadial)
             {
                 ComposeGuis();
+                _hudOpen = true;
             }
             else
             {
@@ -163,7 +171,41 @@ namespace Vigor.Hud
         /// </summary>
         private void OnVisualUpdate(float dt)
         {
+            HandleAutoHide(dt);
             UpdateVigorDisplay();
+        }
+
+        private void HandleAutoHide(float dt)
+        {
+            if (_useRadial) return; // linear HUD only for now
+            if (!_autoHideEnabled) return;
+            // Determine current state
+            float max = Math.Max(1f, _displayedMaxStamina);
+            float stam = _displayedStamina;
+            if (stam < 0f) stam = 0f;
+            if (stam > max) stam = max;
+            // small epsilon to treat near-max as full for UX
+            float eps = Math.Max(0.001f * max, 0.01f);
+            bool isFull = (max - stam) <= eps;
+
+            if (isFull)
+            {
+                _fullElapsed += dt;
+                if (_fullElapsed >= 1.0 && _hudOpen)
+                {
+                    base.TryClose();
+                    _hudOpen = false;
+                }
+            }
+            else
+            {
+                _fullElapsed = 0;
+                if (!_hudOpen)
+                {
+                    TryOpen();
+                    _hudOpen = true;
+                }
+            }
         }
 
         private void ComposeGuis()
@@ -224,12 +266,11 @@ namespace Vigor.Hud
             
             // Add recovery bar first (to be in the background)
             _recoveryThresholdStatbar = new GuiElementStatbar(composer.Api, recoveryBarBounds, recoveryBarColor, isRight, false);
-            _recoveryThresholdStatbar.HideWhenFull = true;
+
             composer.AddInteractiveElement(_recoveryThresholdStatbar, "recoverybar");
 
             // Add main stamina bar
             _staminaStatbar = new GuiElementStatbar(composer.Api, statbarBounds, staminaBarColor, isRight, false);
-            _staminaStatbar.HideWhenFull = _hideStaminaOnFull;
             composer.AddInteractiveElement(_staminaStatbar, "staminabar");
             
             // End child elements and compose
@@ -260,22 +301,31 @@ namespace Vigor.Hud
             float eps = Math.Max(0.001f * max, 0.01f);
             if (max - stam <= eps) stam = max;
 
-            // Note: Main bar HideWhenFull is handled internally by GuiElementStatbar when value == max
+            // Note: HideWhenFull disabled; we control visibility via composer auto-hide
 
             // Update main stamina bar with predicted values (clamped)
-            _staminaStatbar.SetValues(stam, 0, max);
-            _staminaStatbar.ShouldFlash = _displayedIsExhausted;
+            if (_debugHideStaminaBar)
+            {
+                // Force-hide: value == max with HideWhenFull on a hideable bar renders nothing
+                _staminaStatbar.HideWhenFull = true;
+                _staminaStatbar.SetValues(max, 0, max);
+                _staminaStatbar.ShouldFlash = false;
+            }
+            else
+            {
+                _staminaStatbar.SetValues(stam, 0, max);
+                _staminaStatbar.ShouldFlash = _displayedIsExhausted;
+            }
             // The line interval should also be based on the *current* max stamina
             // Draw a line every 100 stamina points, similar to the vanilla hunger bar.
             _staminaStatbar.SetLineInterval(1500f / max);
              
             // Update recovery threshold bar
-            // If exhausted, show the threshold. If not, set value to max, which hides it because HideWhenFull is true.
-            float recoveryValue = _displayedIsExhausted ? _displayedRecoveryThreshold : max;
+            // If exhausted, show the threshold. If not exhausted, draw no fill (0) to avoid a full-width bar
+            float recoveryValue = _displayedIsExhausted ? _displayedRecoveryThreshold : 0f;
             if (recoveryValue < 0f) recoveryValue = 0f;
             if (recoveryValue > max) recoveryValue = max;
-            // Snap recovery to max within epsilon if near full
-            if (max - recoveryValue <= eps) recoveryValue = max;
+            // Do NOT snap recovery to max; we want it visible throughout exhaustion, even if near max
             _recoveryThresholdStatbar.SetValues(recoveryValue, 0, max);
             _recoveryThresholdStatbar.SetLineInterval(1500f / max);
 
@@ -317,7 +367,7 @@ namespace Vigor.Hud
             }
         }
 
-        public override bool TryClose() => false;
+        public override bool TryClose() => base.TryClose();
         public override bool ShouldReceiveKeyboardEvents() => false;
         public override bool Focusable => false;
     }

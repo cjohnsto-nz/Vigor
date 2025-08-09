@@ -81,7 +81,7 @@ namespace Vigor.Config
         
         // --- HUD Options ---
         // When true, replaces the linear statbar with a centered radial element (purely a rendering change)
-        public bool UseRadialHud { get; set; } = false;
+        public bool UseRadialHud { get; set; } = true;
         // Radial appearance options (used only when UseRadialHud is true)
         public bool HideStaminaOnFull { get; set; } = true;
         public float RadialInnerRadius { get; set; } = 0.6f; // normalized ring inner radius
