@@ -5,7 +5,7 @@ namespace Vigor.Config
     public class VigorConfig
     {
         // General Settings
-        public bool DebugMode { get; set; } = true; // Disabled by default
+        public bool DebugMode { get; set; } = false; // Disabled by default
 
         // Stamina Mechanics
         public float MaxStamina { get; set; } = 150f;
@@ -31,7 +31,7 @@ namespace Vigor.Config
         
         // Directional interpolation thresholds
         public float InterpolationThresholdUp { get; set; } = 24.0f; // Threshold for smoothing stamina recovery (going up)
-        public float InterpolationThresholdDown { get; set; } = 6.0f; // Threshold for smoothing stamina drains (going down)
+        public float InterpolationThresholdDown { get; set; } = 5.0f; // Threshold for smoothing stamina drains (going down)
         
         // --- Action Costs ---
         public float SprintStaminaCostPerSecond { get; set; } = 8f;

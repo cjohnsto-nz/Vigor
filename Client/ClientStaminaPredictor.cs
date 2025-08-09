@@ -111,16 +111,22 @@ namespace Vigor.Client
             {
                 // Large change - apply instantly
                 _displayStamina = _serverStamina;
-                _api.Logger.Debug($"[vigor] INSTANT: diff={staminaDiff:F2} > threshold={currentThreshold:F1} ({(staminaDiff > 0 ? "up" : "down")})");
+                if (_config.DebugMode)
+                {
+                    _api.Logger.Debug($"[vigor] INSTANT: diff={staminaDiff:F2} > threshold={currentThreshold:F1} ({(staminaDiff > 0 ? "up" : "down")})");
+                }
             }
             else if (Math.Abs(staminaDiff) > 0.01f)
             {
-                // Small change - adaptive smooth interpolation
-                float interpolationStep = _adaptiveSmoothingSpeed * deltaTime;
-                float moveAmount = Math.Sign(staminaDiff) * Math.Min(Math.Abs(staminaDiff), interpolationStep);
+                // Small change - exponential smoothing for natural motion
+                float smoothingFactor = Math.Min(1.0f, _adaptiveSmoothingSpeed * deltaTime / 10.0f); // Normalize speed to smoothing factor
+                float moveAmount = staminaDiff * smoothingFactor;
                 _displayStamina += moveAmount;
                 
-                _api.Logger.Debug($"[vigor] SMOOTH: diff={staminaDiff:F2}, step={moveAmount:F2}, speed={_adaptiveSmoothingSpeed:F2}, dt={deltaTime:F3}");
+                if (_config.DebugMode)
+                {
+                    _api.Logger.Debug($"[vigor] SMOOTH: diff={staminaDiff:F2}, step={moveAmount:F2}, factor={smoothingFactor:F3}, speed={_adaptiveSmoothingSpeed:F2}");
+                }
             }
             
             // Handle max stamina changes (usually from nutrition)
@@ -189,7 +195,10 @@ namespace Vigor.Client
                 else if (timeDeltaSeconds > 0)
                 {
                     // Debug: Log when we ignore a change as an outlier
-                    _api.Logger.Debug($"[vigor] OUTLIER: change={staminaChange:F2}, rate={Math.Abs(staminaChange)/timeDeltaSeconds:F2}/s, threshold={adaptiveThreshold:F1} ({(staminaChange > 0 ? "up" : "down")})");
+                    if (_config.DebugMode)
+                    {
+                        _api.Logger.Debug($"[vigor] OUTLIER: change={staminaChange:F2}, rate={Math.Abs(staminaChange)/timeDeltaSeconds:F2}/s, threshold={adaptiveThreshold:F1} ({(staminaChange > 0 ? "up" : "down")})");
+                    }
                 }
             }
             
