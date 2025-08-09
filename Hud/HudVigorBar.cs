@@ -8,8 +8,14 @@ namespace Vigor.Hud
 {
     public class HudVigorBar : HudElement
     {
+        // Linear bar UI elements (used when radial HUD is disabled)
         private GuiElementStatbar _staminaStatbar;
         private GuiElementStatbar _recoveryThresholdStatbar;
+        
+        // Radial HUD support
+        private bool _useRadial;
+        private StaminaRadialRenderer _radialRenderer;
+        private Func<StaminaSnapshot> _snapshotProvider;
         private ClientStaminaPredictor _staminaPredictor;
         private long _clientTickListener;
         private long _serverSyncListener;
@@ -20,12 +26,48 @@ namespace Vigor.Hud
         private float _displayedMaxStamina;
         private bool _displayedIsExhausted;
         private float _displayedRecoveryThreshold;
+        private bool _hideStaminaOnFull;
 
         public HudVigorBar(ICoreClientAPI capi) : base(capi)
         {
             var config = VigorModSystem.Instance.CurrentConfig;
-            
-            ComposeGuis();
+            _useRadial = config.UseRadialHud;
+            _hideStaminaOnFull = config.HideStaminaOnFull;
+
+            // Only compose linear GUI when not using radial HUD
+            if (!_useRadial)
+            {
+                ComposeGuis();
+            }
+            else
+            {
+                // Prepare snapshot provider for the radial renderer
+                _snapshotProvider = () =>
+                {
+                    // Clamp/snap values for radial to avoid > max and ensure visual full
+                    float max = Math.Max(1f, _displayedMaxStamina);
+                    float stam = _displayedStamina;
+                    if (stam > max) stam = max;
+                    if (stam < 0f) stam = 0f;
+                    // Snap to max within small epsilon to guarantee full-hide behavior
+                    float eps = Math.Max(0.001f * max, 0.01f);
+                    if (max - stam <= eps) stam = max;
+                    float rec = _displayedRecoveryThreshold;
+                    if (rec < 0f) rec = 0f;
+                    if (rec > max) rec = max;
+
+                    return new StaminaSnapshot
+                    {
+                        Stamina = stam,
+                        MaxStamina = max,
+                        IsExhausted = _displayedIsExhausted,
+                        RecoveryThreshold = rec
+                    };
+                };
+
+                _radialRenderer = new StaminaRadialRenderer(capi, _snapshotProvider);
+                capi.Event.RegisterRenderer(_radialRenderer, EnumRenderStage.Ortho, "vigor:staminaradial");
+            }
             
             // Initialize client-side predictor if enabled
             if (config.EnableClientSidePrediction)
@@ -53,7 +95,10 @@ namespace Vigor.Hud
         public override void OnOwnPlayerDataReceived()
         {
             base.OnOwnPlayerDataReceived();
-            ComposeGuis(); // Recompose on player data received to ensure it's up to date
+            if (!_useRadial)
+            {
+                ComposeGuis(); // Recompose on player data received to ensure it's up to date
+            }
         }
 
         /// <summary>
@@ -159,6 +204,7 @@ namespace Vigor.Hud
             
             // Create recovery bar bounds - same alignment as main bar
             var recoveryBarBounds = statbarBounds.FlatCopy();
+            
 
             // Create parent bounds and apply both X and Y offset at this level - the true parent container
             var barParentBounds = statsBarBounds.FlatCopy()
@@ -183,6 +229,7 @@ namespace Vigor.Hud
 
             // Add main stamina bar
             _staminaStatbar = new GuiElementStatbar(composer.Api, statbarBounds, staminaBarColor, isRight, false);
+            _staminaStatbar.HideWhenFull = _hideStaminaOnFull;
             composer.AddInteractiveElement(_staminaStatbar, "staminabar");
             
             // End child elements and compose
@@ -197,20 +244,42 @@ namespace Vigor.Hud
         /// </summary>
         private void UpdateVigorDisplay()
         {
+            if (_useRadial)
+            {
+                // Radial HUD pulls values from the snapshot provider during render. Nothing to do here.
+                return;
+            }
+
             if (_staminaStatbar == null || _recoveryThresholdStatbar == null) return;
 
-            // Update main stamina bar with predicted values
-            _staminaStatbar.SetValues(_displayedStamina, 0, _displayedMaxStamina);
+            // Clamp/snap values to avoid > max and guarantee full-hide behavior
+            float max = Math.Max(1f, _displayedMaxStamina);
+            float stam = _displayedStamina;
+            if (stam > max) stam = max;
+            if (stam < 0f) stam = 0f;
+            float eps = Math.Max(0.001f * max, 0.01f);
+            if (max - stam <= eps) stam = max;
+
+            // Note: Main bar HideWhenFull is handled internally by GuiElementStatbar when value == max
+
+            // Update main stamina bar with predicted values (clamped)
+            _staminaStatbar.SetValues(stam, 0, max);
             _staminaStatbar.ShouldFlash = _displayedIsExhausted;
             // The line interval should also be based on the *current* max stamina
             // Draw a line every 100 stamina points, similar to the vanilla hunger bar.
-            _staminaStatbar.SetLineInterval(1500f / _displayedMaxStamina);
-            
+            _staminaStatbar.SetLineInterval(1500f / max);
+             
             // Update recovery threshold bar
             // If exhausted, show the threshold. If not, set value to max, which hides it because HideWhenFull is true.
-            float recoveryValue = _displayedIsExhausted ? _displayedRecoveryThreshold : _displayedMaxStamina;
-            _recoveryThresholdStatbar.SetValues(recoveryValue, 0, _displayedMaxStamina);
-            _recoveryThresholdStatbar.SetLineInterval(1500f / _displayedMaxStamina);
+            float recoveryValue = _displayedIsExhausted ? _displayedRecoveryThreshold : max;
+            if (recoveryValue < 0f) recoveryValue = 0f;
+            if (recoveryValue > max) recoveryValue = max;
+            // Snap recovery to max within epsilon if near full
+            if (max - recoveryValue <= eps) recoveryValue = max;
+            _recoveryThresholdStatbar.SetValues(recoveryValue, 0, max);
+            _recoveryThresholdStatbar.SetLineInterval(1500f / max);
+
+            // Note: Recovery bar HideWhenFull=true, setting value == max hides it internally
         }
         
         /// <summary>
@@ -238,6 +307,14 @@ namespace Vigor.Hud
             capi.Event.UnregisterGameTickListener(_clientTickListener);
             capi.Event.UnregisterGameTickListener(_serverSyncListener);
             capi.Event.UnregisterGameTickListener(_visualUpdateListener);
+
+            // Unregister radial renderer if used
+            if (_radialRenderer != null)
+            {
+                capi.Event.UnregisterRenderer(_radialRenderer, EnumRenderStage.Ortho);
+                _radialRenderer.Dispose();
+                _radialRenderer = null;
+            }
         }
 
         public override bool TryClose() => false;

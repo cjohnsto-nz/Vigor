@@ -164,8 +164,10 @@ namespace Vigor.Client
                     // Only track gradual changes for adaptive speed (ignore jumps/outliers)
                     float changeRate = Math.Abs(staminaChange) / timeDeltaSeconds;
                     
-                    // Debug: Log when we track a change for adaptive smoothing
-                    _api.Logger.Debug($"[vigor] TRACKED: change={staminaChange:F2}, rate={changeRate:F2}/s, threshold={adaptiveThreshold:F1} ({(staminaChange > 0 ? "up" : "down")})");
+                    if (_config.DebugMode)
+                    {
+                        _api.Logger.Debug($"[vigor] TRACKED: change={staminaChange:F2}, rate={changeRate:F2}/s, threshold={adaptiveThreshold:F1} ({(staminaChange > 0 ? "up" : "down")})");
+                    }
                     
                     _recentChangeRates.Enqueue(changeRate);
                     if (_recentChangeRates.Count > MAX_CHANGE_SAMPLES)

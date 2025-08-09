@@ -222,19 +222,37 @@ namespace Vigor
                         continue;
                     }
                     
-                    // Get stamina behavior
-                    var staminaBehavior = playerEntity.GetBehavior<EntityBehaviorVigorStamina>();
-                    if (staminaBehavior == null) 
+                    // Skip very-early entities not fully initialized
+                    if (playerEntity.Api == null || playerEntity.World == null)
                     {
-                        Logger.Warning($"[{ModId}] SyncStaminaState: EntityBehaviorVigorStamina not found for player {player.PlayerName}");
-                        
-                        // Check if the behavior exists at all in the entity's behavior list
-                        // List behavior types by enumerating each behavior individually
-                        // Note: Behaviors must be accessed through GetBehavior<T>() method
                         if (CurrentConfig.DebugMode)
-                {
-                    Logger.Debug($"[{ModId}] SyncStaminaState: Checking for behaviors on player {player.PlayerName}...");
-                }
+                        {
+                            Logger.Debug($"[{ModId}] SyncStaminaState: Entity API/World not ready for player {player.PlayerName}, skipping this tick");
+                        }
+                        continue;
+                    }
+
+                    // Get stamina behavior (guard against rare NRE during engine init)
+                    EntityBehaviorVigorStamina staminaBehavior = null;
+                    try
+                    {
+                        staminaBehavior = playerEntity.GetBehavior<EntityBehaviorVigorStamina>();
+                    }
+                    catch (Exception ex)
+                    {
+                        if (CurrentConfig.DebugMode)
+                        {
+                            Logger.Debug($"[{ModId}] SyncStaminaState: GetBehavior threw early for {player.PlayerName}: {ex.Message}");
+                        }
+                        continue;
+                    }
+
+                    if (staminaBehavior == null)
+                    {
+                        if (CurrentConfig.DebugMode)
+                        {
+                            Logger.Debug($"[{ModId}] SyncStaminaState: Stamina behavior not yet attached for {player.PlayerName}");
+                        }
                         continue;
                     }
                     
@@ -322,19 +340,26 @@ namespace Vigor
         {
             try
             {
-                if (player?.Entity == null)
+                // Delay attachment slightly to ensure entity is fully initialized
+                _sapi?.Event.RegisterCallback(dt =>
                 {
-                    Logger.Warning($"[{ModId}] OnPlayerJoin: Player entity is null, cannot attach stamina behavior");
-                    return;
-                }
+                    try
+                    {
+                        if (player?.Entity == null) return;
+                        var entity = player.Entity;
+                        if (entity.Api == null || entity.World == null) return;
 
-                // Check if the behavior already exists (shouldn't, but let's be safe)
-                if (player.Entity.GetBehavior<EntityBehaviorVigorStamina>() == null)
-                {
-                    // Add the behavior to the player entity
-                    player.Entity.AddBehavior(new EntityBehaviorVigorStamina(player.Entity));
-                    Logger.Event($"[{ModId}] Attached vigor stamina behavior to player {player.PlayerName}");
-                }
+                        if (entity.GetBehavior<EntityBehaviorVigorStamina>() == null)
+                        {
+                            entity.AddBehavior(new EntityBehaviorVigorStamina(entity));
+                            Logger.Event($"[{ModId}] Attached vigor stamina behavior to player {player.PlayerName}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Error($"[{ModId}] Delayed attach error: {ex.Message}\n{ex.StackTrace}");
+                    }
+                }, 100);
             }
             catch (Exception ex)
             {

@@ -79,6 +79,15 @@ namespace Vigor.Config
         public float MinRecoveryThresholdModifier { get; set; } = 0.1f; // Minimum 10% of normal recovery threshold
         public float MinRecoveryDelayModifier { get; set; } = 0.5f; // Minimum 50% of normal recovery delay
         
+        // --- HUD Options ---
+        // When true, replaces the linear statbar with a centered radial element (purely a rendering change)
+        public bool UseRadialHud { get; set; } = false;
+        // Radial appearance options (used only when UseRadialHud is true)
+        public bool HideStaminaOnFull { get; set; } = true;
+        public float RadialInnerRadius { get; set; } = 0.6f; // normalized ring inner radius
+        public float RadialOuterRadius { get; set; } = 0.8f; // normalized ring outer radius
+        public float RadialScale { get; set; } = 1.0f;       // global scale multiplier
+        
 
         public VigorConfig()
         {
