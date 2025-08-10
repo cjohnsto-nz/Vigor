@@ -8,6 +8,7 @@ using Vintagestory.API.Server;
 using Vintagestory.API.Config;
 using Vigor.API;
 using Vigor.Utils;
+using Vigor.Core;
 
 namespace Vigor.Behaviors
 {
@@ -21,6 +22,9 @@ namespace Vigor.Behaviors
         // New fields for the refactored nutrition bonus system
         private VigorNutritionBonuses _nutritionBonuses;
         private float _timeSinceBonusUpdate = 1f; // Start > 1 to force immediate update on first tick
+        
+        // Batched tree attribute to prevent excessive MarkPathDirty calls
+        private BatchedTreeAttribute _batchedStaminaTree;
 
         // Nutrition modifiers are calculated using the 'hunger' attribute tree.
 
@@ -34,34 +38,67 @@ namespace Vigor.Behaviors
         private bool _wasOverallRegenPreventedLastTick = false; // Tracks if regen was prevented by any means last tick for debug logging
         private bool _hasLoggedSwimStats = false; // To prevent log spam for swim stats
         private bool _hasLoggedWaterState = false; // To prevent log spam for water state
+        
+        // Obsolete batching variables removed - now handled by BatchedTreeAttribute
+        
         public const string ATTR_EXHAUSTED_SINKING = "vigor:exhaustedSinking";
 
         private const string WALK_SPEED_DEBUFF_CODE = "vigorExhaustionWalkSpeedDebuff";
         // private const float DEFAULT_SINKING_VELOCITY_PER_SECOND = 0.1f; // Replaced by ExhaustedSinkVelocityY config
 
+        /// <summary>
+        /// Access to the stamina tree attribute with batching support
+        /// </summary>
+        private ITreeAttribute StaminaTree => entity.WatchedAttributes.GetTreeAttribute(Name);
+        
+        /// <summary>
+        /// Initialize batched tree if needed
+        /// </summary>
+        private void EnsureBatchedTree()
+        {
+            if (_batchedStaminaTree == null && StaminaTree != null)
+            {
+                _batchedStaminaTree = new BatchedTreeAttribute(StaminaTree, entity.WatchedAttributes, Name, Config.DebugMode);
+            }
+        }
+
         public float MaxStamina
         {
             get {
-                float baseMaxStamina = StaminaTree?.GetFloat("maxStamina", Config.MaxStamina) ?? Config.MaxStamina;
+                EnsureBatchedTree();
+                float baseMaxStamina = _batchedStaminaTree?.GetFloat("maxStamina", Config.MaxStamina) ?? Config.MaxStamina;
                 // Use the cached modifier from the new class
                 return baseMaxStamina * _nutritionBonuses.MaxStaminaModifier;
             }
-            set => StaminaTree?.SetFloat("maxStamina", value);
+            set {
+                EnsureBatchedTree();
+                _batchedStaminaTree?.SetFloat("maxStamina", value);
+            }
         }
 
         public float CurrentStamina
         {
-            get => StaminaTree?.GetFloat("currentStamina", MaxStamina) ?? MaxStamina;
-            set => StaminaTree?.SetFloat("currentStamina", value);
+            get {
+                EnsureBatchedTree();
+                return _batchedStaminaTree?.GetFloat("currentStamina", MaxStamina) ?? MaxStamina;
+            }
+            set {
+                EnsureBatchedTree();
+                _batchedStaminaTree?.SetFloat("currentStamina", value);
+            }
         }
 
         public bool IsExhausted
         {
-            get => StaminaTree?.GetBool("isExhausted", false) ?? false;
-            set => StaminaTree?.SetBool("isExhausted", value);
+            get {
+                EnsureBatchedTree();
+                return _batchedStaminaTree?.GetBool("isExhausted", false) ?? false;
+            }
+            set {
+                EnsureBatchedTree();
+                _batchedStaminaTree?.SetBool("isExhausted", value);
+            }
         }
-
-        private ITreeAttribute StaminaTree => entity.WatchedAttributes.GetTreeAttribute(Name);
 
         private float _lastReceivedStamina;
         private ICoreAPI api;
@@ -118,12 +155,14 @@ namespace Vigor.Behaviors
                 }
                 _timeSinceBonusUpdate = 0f;
 
-                // Check if the calculated max stamina has changed and update the watched attribute if it has.
-                float oldCalculatedMax = StaminaTree?.GetFloat("calculatedMaxStamina", -1) ?? -1;
+                // Update calculated max stamina for HUD display using batched tree
+                EnsureBatchedTree();
+                float oldCalculatedMax = _batchedStaminaTree?.GetFloat("calculatedMaxStamina", -1) ?? -1;
                 float newCalculatedMax = Config.MaxStamina * _nutritionBonuses.MaxStaminaModifier;
                 if (Math.Abs(oldCalculatedMax - newCalculatedMax) > 0.01f)
                 {
-                    StaminaTree?.SetFloat("calculatedMaxStamina", newCalculatedMax);
+                    // Update using batched tree to prevent immediate MarkPathDirty
+                    _batchedStaminaTree?.SetFloat("calculatedMaxStamina", newCalculatedMax);
                     maxStaminaUpdated = true;
                 }
             }
@@ -133,31 +172,33 @@ namespace Vigor.Behaviors
             if (StaminaTree == null)
             {
                 entity.WatchedAttributes.SetAttribute(Name, new TreeAttribute());
-                MaxStamina = Config.MaxStamina;
-                CurrentStamina = MaxStamina;
-                IsExhausted = false;
+                // Initialize using batched tree with immediate sync for initialization
+                EnsureBatchedTree();
+                _batchedStaminaTree.SetFloat("maxStamina", Config.MaxStamina);
+                _batchedStaminaTree.SetFloat("currentStamina", Config.MaxStamina);
+                _batchedStaminaTree.SetBool("isExhausted", false);
+                _batchedStaminaTree.SetFloat("calculatedMaxStamina", Config.MaxStamina * _nutritionBonuses.MaxStaminaModifier);
                 _wasExhaustedLastTick = false;
-                StaminaTree.SetFloat("calculatedMaxStamina", Config.MaxStamina * _nutritionBonuses.MaxStaminaModifier); // Set initial value
-                MarkDirty();
+                _batchedStaminaTree.ForceSync(); // Force immediate sync for initialization
                 Logger.Notification($"[{ModId}] Initialized VigorStamina attributes for entity {entity.EntityId}. DebugMode: {Config.DebugMode}");
                 return;
             }
             
             // Check if base max stamina needs updating due to config changes
-            float storedBaseMaxStamina = StaminaTree.GetFloat("maxStamina", -1);
+            EnsureBatchedTree();
+            float storedBaseMaxStamina = _batchedStaminaTree.GetFloat("maxStamina", -1);
             if (Math.Abs(storedBaseMaxStamina - Config.MaxStamina) > 0.01f)
             {
                 Logger.Notification($"[{ModId}] Updating base max stamina for entity {entity.EntityId} from {storedBaseMaxStamina} to {Config.MaxStamina} due to config change");
-                MaxStamina = Config.MaxStamina;
                 
-                // Adjust current stamina proportionally to maintain the same percentage
-                float currentStaminaRatio = storedBaseMaxStamina > 0 ? (CurrentStamina / storedBaseMaxStamina) : 1f;
-                CurrentStamina = Config.MaxStamina * currentStaminaRatio;
+                // Config updates using batched tree with immediate sync
+                float currentStaminaRatio = storedBaseMaxStamina > 0 ? (_batchedStaminaTree.GetFloat("currentStamina", Config.MaxStamina) / storedBaseMaxStamina) : 1f;
+                _batchedStaminaTree.SetFloat("maxStamina", Config.MaxStamina);
+                _batchedStaminaTree.SetFloat("currentStamina", Config.MaxStamina * currentStaminaRatio);
+                _batchedStaminaTree.SetFloat("calculatedMaxStamina", Config.MaxStamina * _nutritionBonuses.MaxStaminaModifier);
                 
-                // Update calculated max stamina immediately
-                StaminaTree.SetFloat("calculatedMaxStamina", Config.MaxStamina * _nutritionBonuses.MaxStaminaModifier);
                 maxStaminaUpdated = true;
-                MarkDirty();
+                _batchedStaminaTree.ForceSync(); // Force immediate sync for config changes
             }
 
             if (entity is not EntityPlayer plr || plr.Player?.WorldData.CurrentGameMode == EnumGameMode.Creative)
@@ -351,7 +392,8 @@ namespace Vigor.Behaviors
             if (CurrentStamina > MaxStamina) CurrentStamina = MaxStamina;
             if (CurrentStamina < 0) CurrentStamina = 0;
 
-            bool staminaChanged = Math.Abs(staminaBefore - CurrentStamina) > 0.001f;
+            // Use a larger threshold to avoid syncing tiny stamina changes that aren't visually meaningful
+            bool staminaChanged = Math.Abs(staminaBefore - CurrentStamina) > 0.1f;
             bool exhaustionChanged = exhaustedBefore != IsExhausted;
             
             if (isSwimming)
@@ -390,66 +432,48 @@ namespace Vigor.Behaviors
             bool previousSinkingState = entity.WatchedAttributes.GetBool(ATTR_EXHAUSTED_SINKING, false);
             if (previousSinkingState != shouldBeSinking)
             {
-                entity.WatchedAttributes.SetBool(ATTR_EXHAUSTED_SINKING, shouldBeSinking);
+                // Use batched tree for sinking state to prevent immediate MarkPathDirty
+                _batchedStaminaTree?.SetBool(ATTR_EXHAUSTED_SINKING, shouldBeSinking);
             }
 
-            // --- Update Debug Watched Attributes ---
-            bool debugStateChanged = false;
+            // --- Update Debug Watched Attributes using batched tree ---
+            // Debug attributes now use batched tree to prevent immediate MarkPathDirty calls
             // States
-            debugStateChanged |= SetDebugBool("debug_isIdle", isPlayerIdle);
-            debugStateChanged |= SetDebugBool("debug_isSitting", isPlayerSitting);
-            debugStateChanged |= SetDebugBool("debug_isSprinting", isSprinting);
-            debugStateChanged |= SetDebugBool("debug_isSwimming", isSwimming);
-            debugStateChanged |= SetDebugBool("debug_isJumping", isJumping);
-            debugStateChanged |= SetDebugBool("debug_fatiguingActionThisTick", fatiguingActionThisTick);
-            debugStateChanged |= SetDebugBool("debug_regenPrevented", overallRegenPreventedThisTick);
+            _batchedStaminaTree?.SetBool("debug_isIdle", isPlayerIdle);
+            _batchedStaminaTree?.SetBool("debug_isSitting", isPlayerSitting);
+            _batchedStaminaTree?.SetBool("debug_isSprinting", isSprinting);
+            _batchedStaminaTree?.SetBool("debug_isSwimming", isSwimming);
+            _batchedStaminaTree?.SetBool("debug_isJumping", isJumping);
+            _batchedStaminaTree?.SetBool("debug_fatiguingActionThisTick", fatiguingActionThisTick);
+            _batchedStaminaTree?.SetBool("debug_regenPrevented", overallRegenPreventedThisTick);
 
             // Values
-            debugStateChanged |= SetDebugFloat("debug_recoveryThreshold", modifiedRecoveryThreshold);
-            debugStateChanged |= SetDebugFloat("debug_staminaGainPerSecond", actualStaminaGainPerSecond);
-            debugStateChanged |= SetDebugFloat("debug_costPerSecond", costPerSecond);
-            debugStateChanged |= SetDebugFloat("debug_timeSinceFatigue", _timeSinceLastFatiguingAction);
+            _batchedStaminaTree?.SetFloat("debug_recoveryThreshold", modifiedRecoveryThreshold);
+            _batchedStaminaTree?.SetFloat("debug_staminaGainPerSecond", actualStaminaGainPerSecond);
+            _batchedStaminaTree?.SetFloat("debug_costPerSecond", costPerSecond);
+            _batchedStaminaTree?.SetFloat("debug_timeSinceFatigue", _timeSinceLastFatiguingAction);
 
             // Final Modifiers
-            debugStateChanged |= SetDebugFloat("debug_mod_maxStamina", _nutritionBonuses.MaxStaminaModifier);
-            debugStateChanged |= SetDebugFloat("debug_mod_recoveryRate", _nutritionBonuses.RecoveryRateModifier);
-            debugStateChanged |= SetDebugFloat("debug_mod_drainRate", _nutritionBonuses.DrainRateModifier);
-            debugStateChanged |= SetDebugFloat("debug_mod_jumpCost", _nutritionBonuses.JumpCostModifier);
-            debugStateChanged |= SetDebugFloat("debug_mod_recoveryThreshold", _nutritionBonuses.RecoveryThresholdModifier);
-            debugStateChanged |= SetDebugFloat("debug_mod_recoveryDelay", _nutritionBonuses.RecoveryDelayModifier);
+            _batchedStaminaTree?.SetFloat("debug_mod_maxStamina", _nutritionBonuses.MaxStaminaModifier);
+            _batchedStaminaTree?.SetFloat("debug_mod_recoveryRate", _nutritionBonuses.RecoveryRateModifier);
+            _batchedStaminaTree?.SetFloat("debug_mod_drainRate", _nutritionBonuses.DrainRateModifier);
+            _batchedStaminaTree?.SetFloat("debug_mod_jumpCost", _nutritionBonuses.JumpCostModifier);
+            _batchedStaminaTree?.SetFloat("debug_mod_recoveryThreshold", _nutritionBonuses.RecoveryThresholdModifier);
+            _batchedStaminaTree?.SetFloat("debug_mod_recoveryDelay", _nutritionBonuses.RecoveryDelayModifier);
             
-
-            if (staminaChanged || exhaustionChanged || maxStaminaUpdated || previousSinkingState != shouldBeSinking || debugStateChanged)
+            // Batching is now handled by timer-based system, not per-tick TrySync
+            // Always log profiling stats to verify batching effectiveness
+            if (entity is EntityPlayer debugPlayer)
             {
-                MarkDirty();
+                _batchedStaminaTree?.LogProfilingStats(debugPlayer.Player?.PlayerName ?? "Unknown", Config.DebugMode, api);
             }
         }
 
-        private bool SetDebugBool(string key, bool value)
-        {
-            if (StaminaTree == null) return false;
-            bool oldValue = StaminaTree.GetBool(key);
-            if (oldValue == value) return false;
-            StaminaTree.SetBool(key, value);
-            return true;
-        }
+        // SetDebugBool and SetDebugFloat methods removed - now using batched tree interface directly
 
-        private bool SetDebugFloat(string key, float value)
-        {
-            if (StaminaTree == null) return false;
-            float oldValue = StaminaTree.GetFloat(key, -999f);
-            if (Math.Abs(oldValue - value) < 0.01f) return false;
-            StaminaTree.SetFloat(key, value);
-            return true;
-        }
-
-        /// <summary>
-        /// Marks the stamina attributes as dirty to sync with clients
-        /// </summary>
-        public void MarkDirty()
-        {
-            entity.WatchedAttributes.MarkPathDirty(Name);
-        }
+        // MarkDirty method removed - now handled by BatchedTreeAttribute.TrySync()
+        
+        // LogSyncStats method removed - profiling now handled by BatchedTreeAttribute
         
         /// <summary>
         /// Resets the fatigue timer, indicating a fatiguing action has occurred

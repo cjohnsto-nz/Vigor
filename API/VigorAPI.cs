@@ -7,6 +7,7 @@ using Vintagestory.API.Datastructures;
 using Vintagestory.API.Server;
 using Vigor.Behaviors;
 using Vigor.Utils;
+using Vigor.Core;
 
 namespace Vigor.API
 {
@@ -173,8 +174,8 @@ namespace Vigor.API
                     behavior.ResetFatigueTimer();
                 }
                 
-                _api.Logger.Event("[Vigor:API] Marking stamina dirty for player {0}, new value: {1}", (player != null ? player.ToString() : "null"), behavior.CurrentStamina);
-                behavior.MarkDirty();
+                _api.Logger.Event("[Vigor:API] Stamina updated for player {0}, new value: {1} (sync handled by batching system)", (player != null ? player.ToString() : "null"), behavior.CurrentStamina);
+                // MarkDirty() removed - sync now handled automatically by BatchedTreeAttribute.TrySync() in OnGameTick
             }
             else
             {

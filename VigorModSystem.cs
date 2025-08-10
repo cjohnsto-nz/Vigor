@@ -8,6 +8,7 @@ using Vigor.Behaviors;
 using Vigor.Config;
 using Vigor.Hud;
 using Vigor.Utils;
+using Vigor.Core;
 
 namespace Vigor
 {
@@ -145,12 +146,14 @@ namespace Vigor
                     var staminaTree = _capi.World.Player.Entity.WatchedAttributes.GetOrAddTreeAttribute(EntityBehaviorVigorStamina.Name);
                     if (staminaTree != null)
                     {
-                        staminaTree.SetFloat("currentStamina", packet.CurrentStamina);
-                        staminaTree.SetFloat("maxStamina", packet.MaxStamina);
-                        staminaTree.SetBool("isExhausted", packet.IsExhausted);
+                        // Use batched tree for client-side packet handling with immediate sync
+                        var batchedTree = new BatchedTreeAttribute(staminaTree, _capi.World.Player.Entity.WatchedAttributes, EntityBehaviorVigorStamina.Name, CurrentConfig.DebugMode);
+                        batchedTree.SetFloat("currentStamina", packet.CurrentStamina);
+                        batchedTree.SetFloat("maxStamina", packet.MaxStamina);
+                        batchedTree.SetBool("isExhausted", packet.IsExhausted);
                         
-                        // Mark attributes as dirty to propagate changes
-                        _capi.World.Player.Entity.WatchedAttributes.MarkPathDirty(EntityBehaviorVigorStamina.Name);
+                        // Force immediate sync for client-side packet updates
+                        batchedTree.ForceSync();
                         
                         if (CurrentConfig.DebugMode)
                         {
