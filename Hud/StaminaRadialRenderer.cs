@@ -134,12 +134,19 @@ namespace Vigor.Hud
             _capi.Render.RenderMesh(_staminaMeshes[idx]);
 
             // Recovery threshold indicator (draw only when exhausted to match bar semantics)
-            if (exhausted && threshold > 0)
+            if (!VigorModSystem.Instance.CurrentConfig.HideRecoveryThreshold && exhausted && threshold > 0)
             {
                 float thPercent = GameMath.Clamp(threshold / max, 0f, 1f);
                 int thIdx = GameMath.Clamp((int)(thPercent * Steps), 0, Steps);
+                // Draw a small band (±1 step) around the threshold for better visibility
+                int halfWidth = 1;
+                int start = GameMath.Clamp(thIdx - halfWidth, 0, Steps);
+                int end = GameMath.Clamp(thIdx + halfWidth, 0, Steps);
                 shader.Uniform("rgbaIn", new Vec4f(1f, 0.65f, 0f, 0.5f)); // orange accent
-                _capi.Render.RenderMesh(_thresholdMeshes[thIdx]);
+                for (int i = start; i <= end; i++)
+                {
+                    _capi.Render.RenderMesh(_thresholdMeshes[i]);
+                }
             }
         }
 

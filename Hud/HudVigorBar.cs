@@ -321,8 +321,17 @@ namespace Vigor.Hud
             _staminaStatbar.SetLineInterval(1500f / max);
              
             // Update recovery threshold bar
-            // If exhausted, show the threshold. If not exhausted, draw no fill (0) to avoid a full-width bar
-            float recoveryValue = _displayedIsExhausted ? _displayedRecoveryThreshold : 0f;
+            // Respect config: optionally hide recovery threshold entirely
+            float recoveryValue;
+            if (VigorModSystem.Instance.CurrentConfig.HideRecoveryThreshold)
+            {
+                recoveryValue = 0f;
+            }
+            else
+            {
+                // If exhausted, show the threshold. If not exhausted, draw no fill (0) to avoid a full-width bar
+                recoveryValue = _displayedIsExhausted ? _displayedRecoveryThreshold : 0f;
+            }
             if (recoveryValue < 0f) recoveryValue = 0f;
             if (recoveryValue > max) recoveryValue = max;
             // Do NOT snap recovery to max; we want it visible throughout exhaustion, even if near max

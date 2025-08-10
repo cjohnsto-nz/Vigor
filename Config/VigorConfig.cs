@@ -7,6 +7,10 @@ namespace Vigor.Config
         // General Settings
         public bool DebugMode { get; set; } = false; // Disabled by default
 
+        
+        public bool HideRecoveryThreshold { get; set; } = false; // If true, do not render the exhaustion threshold indicator
+        public bool HideStaminaOnFull { get; set; } = false;
+
         // Stamina Mechanics
         public float MaxStamina { get; set; } = 150f;
         public float StaminaGainPerSecond { get; set; } = 12.5f; // Points per second
@@ -81,9 +85,8 @@ namespace Vigor.Config
         
         // --- HUD Options ---
         // When true, replaces the linear statbar with a centered radial element (purely a rendering change)
-        public bool UseRadialHud { get; set; } = true;
+        public bool UseRadialHud { get; set; } = false;
         // Radial appearance options (used only when UseRadialHud is true)
-        public bool HideStaminaOnFull { get; set; } = true;
         public float RadialInnerRadius { get; set; } = 0.6f; // normalized ring inner radius
         public float RadialOuterRadius { get; set; } = 0.8f; // normalized ring outer radius
         public float RadialScale { get; set; } = 1.0f;       // global scale multiplier
