@@ -1,3 +1,4 @@
+using System;
 using Vintagestory.API.Common;
 
 namespace Vigor.API
@@ -63,5 +64,85 @@ namespace Vigor.API
         /// <param name="player">The player entity</param>
         /// <returns>True if the player can perform the action, false if exhausted</returns>
         bool CanPerformStaminaAction(EntityPlayer player);
+        
+        #region Action Type Registration
+        
+        /// <summary>
+        /// Registers a new stamina action type
+        /// </summary>
+        /// <param name="actionId">Unique identifier for this action type (should be namespaced, e.g. "mymod:mining")</param>
+        /// <param name="displayName">Human-readable name for display purposes</param>
+        /// <returns>The registered action type, or existing one if already registered</returns>
+        StaminaActionType RegisterActionType(string actionId, string displayName);
+        
+        /// <summary>
+        /// Gets a registered action type by its ID
+        /// </summary>
+        /// <param name="actionId">The action type ID</param>
+        /// <returns>The action type if found, null otherwise</returns>
+        StaminaActionType GetActionType(string actionId);
+        
+        /// <summary>
+        /// Gets all registered action types
+        /// </summary>
+        /// <returns>Collection of registered action types</returns>
+        StaminaActionType[] GetAllActionTypes();
+        
+        #endregion
+        
+        #region Modifier Registration
+        
+        /// <summary>
+        /// Registers a new stamina modifier
+        /// </summary>
+        /// <param name="modifierId">Unique identifier for this modifier (should be namespaced, e.g. "mymod:mining_efficiency")</param>
+        /// <param name="displayName">Human-readable name for display purposes</param>
+        /// <param name="calculationDelegate">Function that calculates the modified stamina cost</param>
+        /// <returns>The registered modifier, or existing one if already registered</returns>
+        StaminaModifier RegisterModifier(string modifierId, string displayName, System.Func<EntityPlayer, string, float, float> calculationDelegate);
+        
+        /// <summary>
+        /// Gets a registered modifier by its ID
+        /// </summary>
+        /// <param name="modifierId">The modifier ID</param>
+        /// <returns>The modifier if found, null otherwise</returns>
+        StaminaModifier GetModifier(string modifierId);
+        
+        /// <summary>
+        /// Gets all registered modifiers
+        /// </summary>
+        /// <returns>Collection of registered modifiers</returns>
+        StaminaModifier[] GetAllModifiers();
+        
+        #endregion
+        
+        #region Extended Stamina Consumption
+        
+        /// <summary>
+        /// Consumes stamina for a specific action type, applying all registered modifiers
+        /// </summary>
+        /// <param name="actionTypeId">The action type ID</param>
+        /// <param name="amount">Base amount of stamina to consume</param>
+        /// <param name="player">The player entity</param>
+        /// <param name="ignoreFatigue">If true, consuming stamina will not reset the fatigue timer</param>
+        /// <returns>True if stamina was consumed, false otherwise</returns>
+        bool ConsumeStamina(string actionTypeId, float amount, EntityPlayer player, bool ignoreFatigue = false);
+        
+        /// <summary>
+        /// Starts continuous stamina drain for a specific action type, applying all registered modifiers
+        /// </summary>
+        /// <param name="actionTypeId">The action type ID</param>
+        /// <param name="amountPerSecond">Base amount of stamina to drain per second</param>
+        /// <param name="player">The player entity</param>
+        /// <param name="drainId">Unique identifier for this drain source</param>
+        /// <returns>True if drain was started successfully, false if player is already exhausted</returns>
+        bool StartStaminaDrain(string actionTypeId, float amountPerSecond, EntityPlayer player, string drainId);
+        
+        /// <summary>
+        /// Event raised when calculating stamina costs, allows for last-minute modifications
+        /// </summary>
+        event EventHandler<StaminaCostEventArgs> CalculatingStaminaCost;
+        
+        #endregion
     }
 }

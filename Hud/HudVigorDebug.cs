@@ -147,6 +147,7 @@ namespace Vigor.Hud
                 sb.AppendLine($"Drain Rate: {staminaTree.GetFloat("debug_mod_drainRate"):P0}");
                 sb.AppendLine($"Jump Cost: {staminaTree.GetFloat("debug_mod_jumpCost"):P0}");
                 sb.AppendLine($"Recovery Threshold: {staminaTree.GetFloat("debug_mod_recoveryThreshold"):P0}");
+                sb.AppendLine($"Recovery Delay: {staminaTree.GetFloat("debug_mod_recoveryDelay"):P0}");
             }
 
             _debugText?.SetNewText(sb.ToString());

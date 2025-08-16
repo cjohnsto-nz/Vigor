@@ -7,6 +7,10 @@ namespace Vigor.Config
         // General Settings
         public bool DebugMode { get; set; } = false; // Disabled by default
 
+        
+        public bool HideRecoveryThreshold { get; set; } = false; // If true, do not render the exhaustion threshold indicator
+        public bool HideStaminaOnFull { get; set; } = false;
+
         // Stamina Mechanics
         public float MaxStamina { get; set; } = 150f;
         public float StaminaGainPerSecond { get; set; } = 12.5f; // Points per second
@@ -20,6 +24,18 @@ namespace Vigor.Config
         
         // Syncing interval (for client-server updates)
         public float StaminaSyncIntervalSeconds { get; set; } = 0.25f;
+        
+        // --- Client-Side Prediction Settings ---
+        public bool EnableClientSidePrediction { get; set; } = true; // Enable client-side stamina prediction for responsiveness
+        public float ClientPredictionUpdateRate { get; set; } = 16f; // Client prediction update interval in milliseconds (~60 FPS)
+        public float ServerReconciliationRate { get; set; } = 100f; // Server reconciliation interval in milliseconds (10 FPS)
+        public bool EnableServerReconciliation { get; set; } = false; // Enable server reconciliation for UI (can cause jankiness)
+        public float ReconciliationThreshold { get; set; } = 5.0f; // Threshold for server reconciliation
+        public float NutritionUpdateRate { get; set; } = 500f; // How often to update nutrition bonuses (ms)
+        
+        // Directional interpolation thresholds
+        public float InterpolationThresholdUp { get; set; } = 24.0f; // Threshold for smoothing stamina recovery (going up)
+        public float InterpolationThresholdDown { get; set; } = 5.0f; // Threshold for smoothing stamina drains (going down)
         
         // --- Action Costs ---
         public float SprintStaminaCostPerSecond { get; set; } = 8f;
@@ -57,10 +73,23 @@ namespace Vigor.Config
         public float FruitJumpCostBonusAtMax { get; set; } = 0.3f; // -50% jump cost
         public float FruitDrainRateBonusAtMax { get; set; } = 0.2f; // -20% drain rate
         
+        // --- Pooled Nutrition Effects ---
+        // These effects are based on the combined nutrition levels across all categories
+        public float PooledNutritionRecoveryDelayReductionAtMax { get; set; } = 0.5f; // -50% recovery delay when all nutrition maxed
+        
         // Minimum modifier values (to prevent extreme effects)
         public float MinDrainRateModifier { get; set; } = 0.1f; // Minimum 10% of normal drain rate
         public float MinJumpCostModifier { get; set; } = 0.1f; // Minimum 10% of normal jump cost
         public float MinRecoveryThresholdModifier { get; set; } = 0.1f; // Minimum 10% of normal recovery threshold
+        public float MinRecoveryDelayModifier { get; set; } = 0.5f; // Minimum 50% of normal recovery delay
+        
+        // --- HUD Options ---
+        // When true, replaces the linear statbar with a centered radial element (purely a rendering change)
+        public bool UseRadialHud { get; set; } = false;
+        // Radial appearance options (used only when UseRadialHud is true)
+        public float RadialInnerRadius { get; set; } = 0.6f; // normalized ring inner radius
+        public float RadialOuterRadius { get; set; } = 0.8f; // normalized ring outer radius
+        public float RadialScale { get; set; } = 1.0f;       // global scale multiplier
         
 
         public VigorConfig()

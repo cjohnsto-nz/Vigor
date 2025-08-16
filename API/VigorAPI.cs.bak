@@ -7,7 +7,6 @@ using Vintagestory.API.Datastructures;
 using Vintagestory.API.Server;
 using Vigor.Behaviors;
 using Vigor.Utils;
-using Vigor.Core;
 
 namespace Vigor.API
 {
@@ -174,8 +173,8 @@ namespace Vigor.API
                     behavior.ResetFatigueTimer();
                 }
                 
-                _api.Logger.Event("[Vigor:API] Stamina updated for player {0}, new value: {1} (sync handled by batching system)", (player != null ? player.ToString() : "null"), behavior.CurrentStamina);
-                // MarkDirty() removed - sync now handled automatically by BatchedTreeAttribute.TrySync() in OnGameTick
+                _api.Logger.Event("[Vigor:API] Marking stamina dirty for player {0}, new value: {1}", (player != null ? player.ToString() : "null"), behavior.CurrentStamina);
+                behavior.MarkDirty();
             }
             else
             {
@@ -314,8 +313,8 @@ namespace Vigor.API
             // Check if already registered
             if (_registeredActionTypes.TryGetValue(actionId, out var existingAction))
             {
-                var modSystemActions = _api.ModLoader.GetModSystem<VigorModSystem>();
-                _api.Logger.Warning($"[{modSystemActions.ModId}] Action type {actionId} already registered by {existingAction.ModId}");
+                var modSystem = _api.ModLoader.GetModSystem<VigorModSystem>();
+                _api.Logger.Warning($"[{modSystem.ModId}] Action type {actionId} already registered by {existingAction.ModId}");
                 return existingAction;
             }
             
@@ -363,8 +362,8 @@ namespace Vigor.API
             // Check if already registered
             if (_registeredModifiers.TryGetValue(modifierId, out var existingModifier))
             {
-                var modSystemModifiers = _api.ModLoader.GetModSystem<VigorModSystem>();
-                _api.Logger.Warning($"[{modSystemModifiers.ModId}] Modifier {modifierId} already registered by {existingModifier.ModId}");
+                var modSystem = _api.ModLoader.GetModSystem<VigorModSystem>();
+                _api.Logger.Warning($"[{modSystem.ModId}] Modifier {modifierId} already registered by {existingModifier.ModId}");
                 return existingModifier;
             }
             
@@ -421,8 +420,7 @@ namespace Vigor.API
                 }
                 catch (Exception ex)
                 {
-                    var vigorSystem = _api.ModLoader.GetModSystem<VigorModSystem>();
-                    _api.Logger.Error($"[{vigorSystem.ModId}] Error applying modifier {modifier.ModifierId}: {ex.Message}");
+                    _api.Logger.Error($"[{VigorModSystem.ModId}] Error applying modifier {modifier.ModifierId}: {ex.Message}");
                 }
             }
             
@@ -461,8 +459,7 @@ namespace Vigor.API
                 }
                 catch (Exception ex)
                 {
-                    var vigorSystem = _api.ModLoader.GetModSystem<VigorModSystem>();
-                    _api.Logger.Error($"[{vigorSystem.ModId}] Error applying modifier {modifier.ModifierId}: {ex.Message}");
+                    _api.Logger.Error($"[{VigorModSystem.ModId}] Error applying modifier {modifier.ModifierId}: {ex.Message}");
                 }
             }
             
