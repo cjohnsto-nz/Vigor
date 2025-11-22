@@ -33,10 +33,6 @@
       <HintPath>$(GamePath)\Lib\protobuf-net.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="System.Data.SQLite.dll">
-      <HintPath>$(GamePath)\Lib\System.Data.SQLite.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
   </ItemGroup>
 
   <ItemGroup>

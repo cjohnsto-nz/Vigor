@@ -36,7 +36,6 @@ namespace Vigor.Behaviors
         // private bool? _lastLoggedExhaustionState = null; // Unused, removed.
         private bool? _lastLoggedIdleBonusState = null; // To prevent log spam for idle bonus
         private bool _wasOverallRegenPreventedLastTick = false; // Tracks if regen was prevented by any means last tick for debug logging
-        private bool _hasLoggedSwimStats = false; // To prevent log spam for swim stats
         private bool _hasLoggedWaterState = false; // To prevent log spam for water state
         
         // Obsolete batching variables removed - now handled by BatchedTreeAttribute
@@ -99,8 +98,6 @@ namespace Vigor.Behaviors
                 _batchedStaminaTree?.SetBool("isExhausted", value);
             }
         }
-
-        private float _lastReceivedStamina;
         private ICoreAPI api;
 
         public EntityBehaviorVigorStamina(Entity entity) : base(entity)
@@ -146,7 +143,6 @@ namespace Vigor.Behaviors
         {
             // Update nutrition bonuses periodically.
             _timeSinceBonusUpdate += deltaTime;
-            bool maxStaminaUpdated = false;
             if (_timeSinceBonusUpdate >= 1f) // Update every second
             {
                 if (entity is EntityPlayer playerForBonuses)
@@ -163,7 +159,6 @@ namespace Vigor.Behaviors
                 {
                     // Update using batched tree to prevent immediate MarkPathDirty
                     _batchedStaminaTree?.SetFloat("calculatedMaxStamina", newCalculatedMax);
-                    maxStaminaUpdated = true;
                 }
             }
 
@@ -196,8 +191,6 @@ namespace Vigor.Behaviors
                 _batchedStaminaTree.SetFloat("maxStamina", Config.MaxStamina);
                 _batchedStaminaTree.SetFloat("currentStamina", Config.MaxStamina * currentStaminaRatio);
                 _batchedStaminaTree.SetFloat("calculatedMaxStamina", Config.MaxStamina * _nutritionBonuses.MaxStaminaModifier);
-                
-                maxStaminaUpdated = true;
                 _batchedStaminaTree.ForceSync(); // Force immediate sync for config changes
             }
 
@@ -423,10 +416,6 @@ namespace Vigor.Behaviors
                 {
                     api.Logger.Debug($"Player {plr.Player.PlayerName} has no air due to exhaustion.");
                 }
-            }
-            else
-            {
-                _hasLoggedSwimStats = false;
             }
 
             bool previousSinkingState = entity.WatchedAttributes.GetBool(ATTR_EXHAUSTED_SINKING, false);
