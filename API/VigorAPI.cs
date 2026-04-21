@@ -160,7 +160,7 @@ namespace Vigor.API
                     behavior.ResetFatigueTimer();
                 }
                 
-                // MarkDirty() removed - sync now handled automatically by BatchedTreeAttribute.TrySync() in OnGameTick
+                // MarkDirty() removed - sync is coalesced by BatchedTreeAttribute and flushed on the main game thread.
             }
             else
             {

@@ -25,10 +25,6 @@
       <HintPath>$(GamePath)\Lib\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="Newtonsoft.Json.dll">
-      <HintPath>$(GamePath)\Lib\Newtonsoft.Json.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
     <Reference Include="protobuf-net.dll">
       <HintPath>$(GamePath)\Lib\protobuf-net.dll</HintPath>
       <Private>false</Private>
@@ -48,6 +44,8 @@
 
   <ItemGroup>
     <Compile Remove="Gui\**" />
+    <Compile Remove="_decomp_vs_api\**\*.cs" />
+    <Compile Remove="_decomp_vs_lib\**\*.cs" />
     <None Include="Gui\**" />
   </ItemGroup>
 

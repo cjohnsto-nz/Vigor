@@ -1,6 +1,8 @@
+using System;
 using System.Text;
 using Vigor.Behaviors;
 using Vigor.Config;
+using Vigor.Utils;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 using Vintagestory.API.Config;
@@ -10,7 +12,8 @@ namespace Vigor.Hud
 {
     public class HudVigorDebug : HudElement
     {
-        private GuiElementDynamicText _debugText;
+        private GuiElementDynamicText _leftDebugText;
+        private GuiElementDynamicText _rightDebugText;
         private long _listenerId;
 
         public HudVigorDebug(ICoreClientAPI capi) : base(capi)
@@ -30,16 +33,17 @@ namespace Vigor.Hud
 
         private void OnGameTick(float dt)
         {
-            if (_debugText == null) return;
+            if (_leftDebugText == null || _rightDebugText == null) return;
             UpdateDebugText();
         }
 
         private void ComposeDialog()
         {
-            ElementBounds textBounds = ElementBounds.Fixed(0, 20, 300, 600);
+            ElementBounds leftTextBounds = ElementBounds.Fixed(0, 20, 360, 620);
+            ElementBounds rightTextBounds = ElementBounds.Fixed(380, 20, 360, 620);
             ElementBounds bgBounds = ElementBounds.Fill.WithFixedPadding(GuiStyle.ElementToDialogPadding);
             bgBounds.BothSizing = ElementSizing.FitToChildren;
-            bgBounds.WithChildren(textBounds);
+            bgBounds.WithChildren(leftTextBounds, rightTextBounds);
 
             ElementBounds dialogBounds = ElementStdBounds.AutosizedMainDialog.WithAlignment(EnumDialogArea.CenterMiddle);
 
@@ -47,40 +51,45 @@ namespace Vigor.Hud
                 .AddShadedDialogBG(bgBounds)
                 .AddDialogTitleBar("Vigor Debug Info", () => TryClose());
 
-            composer.AddDynamicText("", CairoFont.WhiteDetailText(), textBounds, "debugtext");
+            composer.AddDynamicText("", CairoFont.WhiteDetailText(), leftTextBounds, "debugtext-left");
+            composer.AddDynamicText("", CairoFont.WhiteDetailText(), rightTextBounds, "debugtext-right");
 
             Composers["vigorinfodialog"] = composer.Compose();
-            _debugText = Composers["vigorinfodialog"].GetDynamicText("debugtext");
+            _leftDebugText = Composers["vigorinfodialog"].GetDynamicText("debugtext-left");
+            _rightDebugText = Composers["vigorinfodialog"].GetDynamicText("debugtext-right");
 
             if (VigorModSystem.Instance.CurrentConfig.DebugMode) TryOpen();
         }
 
         private void UpdateDebugText()
         {
-            var sb = new StringBuilder();
+            var left = new StringBuilder();
+            var right = new StringBuilder();
 
             var config = VigorModSystem.Instance?.CurrentConfig;
             if (config == null)
             {
-                sb.AppendLine("Waiting for config...");
-                _debugText?.SetNewText(sb.ToString());
+                left.AppendLine("Waiting for config...");
+                _leftDebugText?.SetNewText(left.ToString());
+                _rightDebugText?.SetNewText(string.Empty);
                 return;
             }
 
             var player = capi.World?.Player;
             if (player == null)
             {
-                sb.AppendLine("Waiting for player data...");
-                _debugText?.SetNewText(sb.ToString());
+                left.AppendLine("Waiting for player data...");
+                _leftDebugText?.SetNewText(left.ToString());
+                _rightDebugText?.SetNewText(string.Empty);
                 return;
             }
 
             // Nutrition Section
-            sb.AppendLine("--- Vigor Nutrition ---");
+            left.AppendLine("--- Vigor Nutrition ---");
             var hungerTree = player.Entity.WatchedAttributes.GetTreeAttribute("hunger");
             if (hungerTree == null)
             {
-                sb.AppendLine("Waiting for nutrition data (hunger)...");
+                left.AppendLine("Waiting for nutrition data (hunger)...");
             }
             else
             {
@@ -102,55 +111,106 @@ namespace Vigor.Hud
                 float fruitJumpCostMod = (fruit / NUTRITION_MAX) * config.FruitJumpCostBonusAtMax;
                 float fruitDrainMod = (fruit / NUTRITION_MAX) * config.FruitDrainRateBonusAtMax;
 
-                sb.AppendLine($"Grain: {grain:F1} (+{grainMaxStamMod * 100:F0}% max, -{grainJumpCostMod * 100:F0}% jump)");
-                sb.AppendLine($"Protein: {protein:F1} (+{proteinRecoveryMod * 100:F0}% rec, +{proteinMaxStamMod * 100:F0}% max)");
-                sb.AppendLine($"Vegetable: {vegetable:F1} (-{vegDrainMod * 100:F0}% drain, -{vegRecoveryThreshMod * 100:F0}% thresh)");
-                sb.AppendLine($"Dairy: {dairy:F1} (-{dairyRecoveryThreshMod * 100:F0}% thresh, +{dairyRecoveryRateMod * 100:F0}% rec)");
-                sb.AppendLine($"Fruit: {fruit:F1} (-{fruitJumpCostMod * 100:F0}% jump, -{fruitDrainMod * 100:F0}% drain)");
+                left.AppendLine($"Grain: {grain:F1} (+{grainMaxStamMod * 100:F0}% max, -{grainJumpCostMod * 100:F0}% jump)");
+                left.AppendLine($"Protein: {protein:F1} (+{proteinRecoveryMod * 100:F0}% rec, +{proteinMaxStamMod * 100:F0}% max)");
+                left.AppendLine($"Vegetable: {vegetable:F1} (-{vegDrainMod * 100:F0}% drain, -{vegRecoveryThreshMod * 100:F0}% thresh)");
+                left.AppendLine($"Dairy: {dairy:F1} (-{dairyRecoveryThreshMod * 100:F0}% thresh, +{dairyRecoveryRateMod * 100:F0}% rec)");
+                left.AppendLine($"Fruit: {fruit:F1} (-{fruitJumpCostMod * 100:F0}% jump, -{fruitDrainMod * 100:F0}% drain)");
             }
 
             // Stamina Section
-            sb.AppendLine("\n--- Stamina Stats ---");
+            left.AppendLine("\n--- Stamina Stats ---");
             var staminaTree = player.Entity.WatchedAttributes.GetTreeAttribute(EntityBehaviorVigorStamina.Name);
             if (staminaTree == null)
             {
-                sb.AppendLine("Waiting for stamina data...");
+                left.AppendLine("Waiting for stamina data...");
             }
             else
             {
-                float maxStamina = staminaTree.GetFloat("calculatedMaxStamina", staminaTree.GetFloat("maxStamina"));
-                float currentStamina = staminaTree.GetFloat("currentStamina");
-                bool isExhausted = staminaTree.GetBool("isExhausted");
+                var syncedState = VigorModSystem.Instance.GetClientStaminaState(player.PlayerUID);
+                float maxStamina = syncedState?.MaxStamina ?? staminaTree.GetFloat("calculatedMaxStamina", staminaTree.GetFloat("maxStamina"));
+                float currentStamina = syncedState?.CurrentStamina ?? staminaTree.GetFloat("currentStamina");
+                bool isExhausted = syncedState?.IsExhausted ?? staminaTree.GetBool("isExhausted");
                 float recoveryThreshold = staminaTree.GetFloat("debug_recoveryThreshold");
 
-                sb.AppendLine($"Stamina: {currentStamina:F1} / {maxStamina:F1}");
-                sb.AppendLine($"Exhausted: {isExhausted} (Recovery at > {recoveryThreshold:F1})");
-                sb.AppendLine($"Sinking: {staminaTree.GetBool(EntityBehaviorVigorStamina.ATTR_EXHAUSTED_SINKING)}");
+                left.AppendLine($"Stamina: {currentStamina:F1} / {maxStamina:F1}");
+                left.AppendLine($"Exhausted: {isExhausted} (Recovery at > {recoveryThreshold:F1})");
+                left.AppendLine($"Sinking: {staminaTree.GetBool(EntityBehaviorVigorStamina.ATTR_EXHAUSTED_SINKING)}");
 
-                sb.AppendLine("\n--- Player State (Debug) ---");
-                sb.AppendLine($"Idle: {staminaTree.GetBool("debug_isIdle")}");
-                sb.AppendLine($"Sitting: {staminaTree.GetBool("debug_isSitting")}");
-                sb.AppendLine($"Sprinting: {staminaTree.GetBool("debug_isSprinting")}");
-                sb.AppendLine($"Swimming: {staminaTree.GetBool("debug_isSwimming")}");
-                sb.AppendLine($"Jumping: {staminaTree.GetBool("debug_isJumping")}");
-                sb.AppendLine($"Fatiguing Action: {staminaTree.GetBool("debug_fatiguingActionThisTick")}");
-                sb.AppendLine($"Regen Blocked: {staminaTree.GetBool("debug_regenPrevented")}");
+                left.AppendLine("\n--- Player State (Debug) ---");
+                left.AppendLine($"Idle: {staminaTree.GetBool("debug_isIdle")}");
+                left.AppendLine($"Sitting: {staminaTree.GetBool("debug_isSitting")}");
+                left.AppendLine($"Sprinting: {staminaTree.GetBool("debug_isSprinting")}");
+                left.AppendLine($"Swimming: {staminaTree.GetBool("debug_isSwimming")}");
+                left.AppendLine($"Jumping: {staminaTree.GetBool("debug_isJumping")}");
+                left.AppendLine($"Fatiguing Action: {staminaTree.GetBool("debug_fatiguingActionThisTick")}");
+                left.AppendLine($"Regen Blocked: {staminaTree.GetBool("debug_regenPrevented")}");
 
-                sb.AppendLine("\n--- Rates & Timers (Debug) ---");
-                sb.AppendLine($"Cost/sec: {staminaTree.GetFloat("debug_costPerSecond"):F2}");
-                sb.AppendLine($"Gain/sec: {staminaTree.GetFloat("debug_staminaGainPerSecond"):F2}");
-                sb.AppendLine($"Time Since Fatigue: {staminaTree.GetFloat("debug_timeSinceFatigue"):F1}s");
+                left.AppendLine("\n--- Rates & Timers (Debug) ---");
+                left.AppendLine($"Cost/sec: {staminaTree.GetFloat("debug_costPerSecond"):F2}");
+                left.AppendLine($"Gain/sec: {staminaTree.GetFloat("debug_staminaGainPerSecond"):F2}");
+                left.AppendLine($"Time Since Fatigue: {staminaTree.GetFloat("debug_timeSinceFatigue"):F1}s");
 
-                sb.AppendLine("\n--- Final Modifiers (Debug) ---");
-                sb.AppendLine($"Max Stamina: {staminaTree.GetFloat("debug_mod_maxStamina"):P0}");
-                sb.AppendLine($"Recovery Rate: {staminaTree.GetFloat("debug_mod_recoveryRate"):P0}");
-                sb.AppendLine($"Drain Rate: {staminaTree.GetFloat("debug_mod_drainRate"):P0}");
-                sb.AppendLine($"Jump Cost: {staminaTree.GetFloat("debug_mod_jumpCost"):P0}");
-                sb.AppendLine($"Recovery Threshold: {staminaTree.GetFloat("debug_mod_recoveryThreshold"):P0}");
-                sb.AppendLine($"Recovery Delay: {staminaTree.GetFloat("debug_mod_recoveryDelay"):P0}");
+                left.AppendLine("\n--- Final Modifiers (Debug) ---");
+                left.AppendLine($"Max Stamina: {staminaTree.GetFloat("debug_mod_maxStamina"):P0}");
+                left.AppendLine($"Recovery Rate: {staminaTree.GetFloat("debug_mod_recoveryRate"):P0}");
+                left.AppendLine($"Drain Rate: {staminaTree.GetFloat("debug_mod_drainRate"):P0}");
+                left.AppendLine($"Jump Cost: {staminaTree.GetFloat("debug_mod_jumpCost"):P0}");
+                left.AppendLine($"Recovery Threshold: {staminaTree.GetFloat("debug_mod_recoveryThreshold"):P0}");
+                left.AppendLine($"Recovery Delay: {staminaTree.GetFloat("debug_mod_recoveryDelay"):P0}");
             }
 
-            _debugText?.SetNewText(sb.ToString());
+            right.AppendLine("\n--- Batching Diagnostics ---");
+            long setAttempts = VigorDiagnostics.GetCounter("batchedTree.setCalls");
+            long stagedChanges = VigorDiagnostics.GetCounter("batchedTree.setStaged");
+            long noOpSkips = VigorDiagnostics.GetCounter("batchedTree.setNoOpSkipped");
+            long debugFiltered = VigorDiagnostics.GetCounter("batchedTree.setDebugFiltered");
+            long markDirtyCalls = VigorDiagnostics.GetCounter("batchedTree.markPathDirty");
+            long forcedFlushes = VigorDiagnostics.GetCounter("batchedTree.forceSync");
+            long deferredFlushes = VigorDiagnostics.GetCounter("batchedTree.flushInterval");
+            long skippedNoChanges = VigorDiagnostics.GetCounter("batchedTree.flushSkippedNoChanges");
+            long skippedNotDue = VigorDiagnostics.GetCounter("batchedTree.flushSkippedNotDue");
+            double activeBatchers = VigorDiagnostics.GetGauge("batchedTree.activeApprox");
+            double pendingFloats = VigorDiagnostics.GetGauge("batchedTree.pendingFloatCount");
+            double pendingBools = VigorDiagnostics.GetGauge("batchedTree.pendingBoolCount");
+            double pendingInts = VigorDiagnostics.GetGauge("batchedTree.pendingIntCount");
+            double pendingStrings = VigorDiagnostics.GetGauge("batchedTree.pendingStringCount");
+            double stagingRate = setAttempts > 0 ? Math.Max(0, stagedChanges * 100d / setAttempts) : 0d;
+            double batchingEffectiveness = stagedChanges > 0 ? Math.Max(0, (double)(stagedChanges - markDirtyCalls) * 100d / stagedChanges) : 0d;
+
+            right.AppendLine($"Set attempts: {setAttempts}");
+            right.AppendLine($"Staged changes: {stagedChanges} ({stagingRate:F1}% of attempts)");
+            right.AppendLine($"Skipped sets: no-op {noOpSkips}, debug-filter {debugFiltered}");
+            right.AppendLine($"MarkDirty calls: {markDirtyCalls} ({batchingEffectiveness:F1}% coalesced)");
+            right.AppendLine($"Flushes: forced {forcedFlushes}, deferred {deferredFlushes}");
+            right.AppendLine($"Skipped flushes: empty {skippedNoChanges}, not due {skippedNotDue}");
+            right.AppendLine($"Active batchers: {activeBatchers:F0}");
+            right.AppendLine($"Pending staged values: F {pendingFloats:F0}, B {pendingBools:F0}, I {pendingInts:F0}, S {pendingStrings:F0}");
+            right.AppendLine($"Packet-created batchers: {VigorDiagnostics.GetCounter("network.packetLocalPlayerBatchedTreeCreated")}");
+            right.AppendLine($"Local packets cached: {VigorDiagnostics.GetCounter("network.packetLocalPlayerCached")}");
+
+            right.AppendLine("\n--- Prediction Diagnostics ---");
+            right.AppendLine($"Sync interval: {VigorModSystem.Instance.CurrentConfig.StaminaSyncIntervalSeconds * 1000f:F0} ms");
+            right.AppendLine($"Prediction error: {VigorDiagnostics.GetGauge("prediction.error"):F2}");
+            right.AppendLine($"Pending correction: {VigorDiagnostics.GetGauge("prediction.pendingCorrection"):F2}");
+            right.AppendLine($"Recovering: {VigorDiagnostics.GetGauge("prediction.isRecovering"):F0}");
+            right.AppendLine($"Local delta: {VigorDiagnostics.GetGauge("prediction.localDelta"):F2}");
+            right.AppendLine($"Local recovery gain: {VigorDiagnostics.GetGauge("prediction.localRecoveryGain"):F2}");
+            right.AppendLine($"Last queued correction: {VigorDiagnostics.GetGauge("prediction.lastQueuedCorrection"):F2}");
+            right.AppendLine($"Last applied correction: {VigorDiagnostics.GetGauge("prediction.lastAppliedCorrection"):F2}");
+            right.AppendLine($"Last server packet delta: {VigorDiagnostics.GetGauge("prediction.lastServerPacketDelta"):F2}");
+            right.AppendLine($"Cooldown remaining: {VigorDiagnostics.GetGauge("prediction.cooldownRemaining"):F2}s");
+            right.AppendLine($"Packet age: {VigorDiagnostics.GetGauge("prediction.lastPacketAgeMs"):F0} ms");
+            right.AppendLine($"Packet interval: {VigorDiagnostics.GetGauge("prediction.lastServerPacketIntervalMs"):F0} ms");
+            right.AppendLine($"Server packets: {VigorDiagnostics.GetCounter("prediction.serverPackets")}");
+            right.AppendLine($"Soft corrections: {VigorDiagnostics.GetCounter("prediction.softCorrections")}");
+            right.AppendLine($"Jump grace suppressions: {VigorDiagnostics.GetCounter("prediction.jumpGraceSuppressions")}");
+            right.AppendLine($"Recovery suppressions: {VigorDiagnostics.GetCounter("prediction.recoverySuppressions")}");
+            right.AppendLine($"Recovery corrections: + {VigorDiagnostics.GetCounter("prediction.recoveryPositiveCorrections")}, - {VigorDiagnostics.GetCounter("prediction.recoveryNegativeCorrections")}");
+            right.AppendLine($"Snaps: hard {VigorDiagnostics.GetCounter("prediction.hardSnaps")}, boundary {VigorDiagnostics.GetCounter("prediction.boundarySnaps")}");
+
+            _leftDebugText?.SetNewText(left.ToString());
+            _rightDebugText?.SetNewText(right.ToString());
         }
 
         public override void Dispose()

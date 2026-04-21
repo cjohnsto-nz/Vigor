@@ -1,6 +1,7 @@
 using System;
 using Vigor.Behaviors;
 using Vigor.Client;
+using Vigor.Utils;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
 
@@ -40,6 +41,8 @@ namespace Vigor.Hud
             _useRadial = config.UseRadialHud;
             _hideStaminaOnFull = config.HideStaminaOnFull;
             _autoHideEnabled = config.HideStaminaOnFull;
+
+            VigorModSystem.Instance.LocalPlayerStaminaStateUpdated += OnLocalPlayerStaminaStateUpdated;
 
             // Only compose linear GUI when not using radial HUD
             if (!_useRadial)
@@ -128,30 +131,42 @@ namespace Vigor.Hud
             var player = capi?.World?.Player;
             if (player?.Entity == null) return;
 
-            var staminaTree = player.Entity.WatchedAttributes.GetTreeAttribute(EntityBehaviorVigorStamina.Name);
-            if (staminaTree == null) return;
-
-            // Get server values for interpolation
-            var serverStamina = staminaTree.GetFloat("currentStamina");
-            var serverMaxStamina = staminaTree.GetFloat("calculatedMaxStamina");
-            var serverIsExhausted = staminaTree.GetBool("isExhausted");
-            var recoveryThreshold = staminaTree.GetFloat("debug_recoveryThreshold");
-            
-            // Update recovery threshold for debug display
-            _displayedRecoveryThreshold = recoveryThreshold;
-            
-            // Provide server values to interpolation system
             if (_staminaPredictor != null)
             {
-                _staminaPredictor.ReconcileWithServer(serverStamina, serverMaxStamina, serverIsExhausted);
+                _displayedRecoveryThreshold = _staminaPredictor.CurrentRecoveryThreshold;
+                return;
+            }
+
+            var syncedState = VigorModSystem.Instance?.GetClientStaminaState(player.PlayerUID);
+            var staminaTree = player.Entity.WatchedAttributes.GetTreeAttribute(EntityBehaviorVigorStamina.Name);
+            if (syncedState == null && staminaTree == null) return;
+
+            float serverStamina;
+            float serverMaxStamina;
+            bool serverIsExhausted;
+
+            if (syncedState != null)
+            {
+                serverStamina = syncedState.CurrentStamina;
+                serverMaxStamina = syncedState.MaxStamina;
+                serverIsExhausted = syncedState.IsExhausted;
             }
             else
             {
-                // Fallback: direct server values when no predictor
-                _displayedStamina = serverStamina;
-                _displayedMaxStamina = serverMaxStamina;
-                _displayedIsExhausted = serverIsExhausted;
+                serverStamina = staminaTree.GetFloat("currentStamina");
+                serverMaxStamina = staminaTree.GetFloat("calculatedMaxStamina", staminaTree.GetFloat("maxStamina"));
+                serverIsExhausted = staminaTree.GetBool("isExhausted");
             }
+
+            var recoveryThreshold = staminaTree?.GetFloat("debug_recoveryThreshold", _displayedRecoveryThreshold) ?? _displayedRecoveryThreshold;
+            
+            // Update recovery threshold for debug display
+            _displayedRecoveryThreshold = recoveryThreshold;
+
+            // Fallback: direct server values when no predictor
+            _displayedStamina = serverStamina;
+            _displayedMaxStamina = serverMaxStamina;
+            _displayedIsExhausted = serverIsExhausted;
         }
         
         /// <summary>
@@ -162,8 +177,32 @@ namespace Vigor.Hud
             _displayedStamina = stamina;
             _displayedMaxStamina = maxStamina;
             _displayedIsExhausted = isExhausted;
+            _displayedRecoveryThreshold = _staminaPredictor?.CurrentRecoveryThreshold ?? _displayedRecoveryThreshold;
             
             // Values updated, visual update will happen on next OnVisualUpdate tick
+        }
+
+        /// <summary>
+        /// Applies local-player packet updates immediately so the HUD does not wait for the next polling tick.
+        /// </summary>
+        private void OnLocalPlayerStaminaStateUpdated(StaminaStatePacket packet)
+        {
+            if (packet == null) return;
+
+            var player = capi?.World?.Player;
+            if (player?.PlayerUID != packet.PlayerUID) return;
+
+            if (_staminaPredictor != null)
+            {
+                _staminaPredictor.ReconcileWithServer(packet.CurrentStamina, packet.MaxStamina, packet.IsExhausted);
+            }
+            else
+            {
+                _displayedStamina = packet.CurrentStamina;
+                _displayedMaxStamina = packet.MaxStamina;
+                _displayedIsExhausted = packet.IsExhausted;
+                UpdateVigorDisplay();
+            }
         }
         
         /// <summary>
@@ -355,6 +394,11 @@ namespace Vigor.Hud
         public override void Dispose()
         {
             base.Dispose();
+
+            if (VigorModSystem.Instance != null)
+            {
+                VigorModSystem.Instance.LocalPlayerStaminaStateUpdated -= OnLocalPlayerStaminaStateUpdated;
+            }
             
             // Unregister event listeners
             if (_staminaPredictor != null)

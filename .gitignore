@@ -2,8 +2,9 @@
 bin
 obj
 
-
-
+# Decompiled Vintage Story references
+_decomp_vs_api/
+_decomp_vs_lib/
 
 # Mod files
 bin\Debug\ModPackage\
