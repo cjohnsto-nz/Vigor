@@ -11,7 +11,6 @@ namespace Vigor.Hud
     {
         // Linear bar UI elements (used when radial HUD is disabled)
         private GuiElementStatbar _staminaStatbar;
-        private GuiElementStatbar _recoveryThresholdStatbar;
         
         // Radial HUD support
         private bool _useRadial;
@@ -30,6 +29,8 @@ namespace Vigor.Hud
         private bool _hideStaminaOnFull;
         // TEMP: hide stamina bar to verify recovery overlay independently
         private bool _debugHideStaminaBar = false;
+        private float? _lastRecoveryMarkerValue;
+        private long _recoveryMarkerVisibleSinceMs;
         // Auto-hide controls
         private bool _autoHideEnabled;
         private bool _hudOpen;
@@ -284,10 +285,6 @@ namespace Vigor.Hud
                 statsBarWidth
             )
             .WithFixedHeight(10); // statbar height verified
-            
-            // Create recovery bar bounds - same alignment as main bar
-            var recoveryBarBounds = statbarBounds.FlatCopy();
-            
 
             // Create parent bounds and apply both X and Y offset at this level - the true parent container
             var barParentBounds = statsBarBounds.FlatCopy()
@@ -297,21 +294,16 @@ namespace Vigor.Hud
             
             // Set up bar colors with sufficient alpha for background visibility
             double[] staminaBarColor = { 0.85, 0.65, 0, 0.5 }; // Use alpha 0.5 to match HydrateOrDiedrate
-            double[] recoveryBarColor = { staminaBarColor[0] * 0.6, staminaBarColor[1] * 0.6, staminaBarColor[2], 0.5 };
 
             // Create composer using the parent bounds - exactly like HydrateOrDiedrate
             var composer = capi.Gui.CreateCompo("vigorhud", barParentBounds);
             
             // Begin with child elements in stats bounds
             composer.BeginChildElements(statsBarBounds);
-            
-            // Add recovery bar first (to be in the background)
-            _recoveryThresholdStatbar = new GuiElementStatbar(composer.Api, recoveryBarBounds, recoveryBarColor, isRight, false);
-
-            composer.AddInteractiveElement(_recoveryThresholdStatbar, "recoverybar");
 
             // Add main stamina bar
             _staminaStatbar = new GuiElementStatbar(composer.Api, statbarBounds, staminaBarColor, isRight, false);
+            _staminaStatbar.PreviousValueDisplayTime = 3600f; // Keep the recovery marker persistent while active
             composer.AddInteractiveElement(_staminaStatbar, "staminabar");
             
             // End child elements and compose
@@ -332,7 +324,7 @@ namespace Vigor.Hud
                 return;
             }
 
-            if (_staminaStatbar == null || _recoveryThresholdStatbar == null) return;
+            if (_staminaStatbar == null) return;
 
             // Clamp/snap values to avoid > max and guarantee full-hide behavior
             float max = Math.Max(1f, _displayedMaxStamina);
@@ -357,29 +349,40 @@ namespace Vigor.Hud
                 _staminaStatbar.SetValues(stam, 0, max);
                 _staminaStatbar.ShouldFlash = _displayedIsExhausted;
             }
-            // The line interval should also be based on the *current* max stamina
-            // Draw a line every 100 stamina points, similar to the vanilla hunger bar.
-            _staminaStatbar.SetLineInterval(1500f / max);
-             
-            // Update recovery threshold bar
-            // Respect config: optionally hide recovery threshold entirely
-            float recoveryValue;
-            if (VigorModSystem.Instance.CurrentConfig.HideRecoveryThreshold)
+
+            // Vanilla-style single-statbar overlay: use the statbar's previous-value layer
+            // so the threshold inherits the bar's yellow/orange palette instead of the
+            // hardcoded green future-value projection used by vanilla healing.
+            float? recoveryMarkerValue = null;
+            var config = VigorModSystem.Instance.CurrentConfig;
+            if (!config.HideRecoveryThreshold)
             {
-                recoveryValue = 0f;
+                if (_displayedIsExhausted && _displayedRecoveryThreshold > 0.01f)
+                {
+                    recoveryMarkerValue = Math.Clamp(_displayedRecoveryThreshold, 0f, max);
+                }
+            }
+            _staminaStatbar.SetFutureValues(null, 0f);
+
+            long nowMs = capi.InWorldEllapsedMilliseconds;
+            if (recoveryMarkerValue.HasValue)
+            {
+                if (!_lastRecoveryMarkerValue.HasValue || Math.Abs(_lastRecoveryMarkerValue.Value - recoveryMarkerValue.Value) > 0.01f)
+                {
+                    _recoveryMarkerVisibleSinceMs = nowMs;
+                    _lastRecoveryMarkerValue = recoveryMarkerValue.Value;
+                }
             }
             else
             {
-                // If exhausted, show the threshold. If not exhausted, draw no fill (0) to avoid a full-width bar
-                recoveryValue = _displayedIsExhausted ? _displayedRecoveryThreshold : 0f;
+                _lastRecoveryMarkerValue = null;
+                _recoveryMarkerVisibleSinceMs = nowMs;
             }
-            if (recoveryValue < 0f) recoveryValue = 0f;
-            if (recoveryValue > max) recoveryValue = max;
-            // Do NOT snap recovery to max; we want it visible throughout exhaustion, even if near max
-            _recoveryThresholdStatbar.SetValues(recoveryValue, 0, max);
-            _recoveryThresholdStatbar.SetLineInterval(1500f / max);
+            _staminaStatbar.SetPrevValue(recoveryMarkerValue, _recoveryMarkerVisibleSinceMs, () => capi.InWorldEllapsedMilliseconds);
 
-            // Note: Recovery bar HideWhenFull=true, setting value == max hides it internally
+            // The line interval should also be based on the *current* max stamina
+            // Draw a line every 100 stamina points, similar to the vanilla hunger bar.
+            _staminaStatbar.SetLineInterval(1500f / max);
         }
         
         /// <summary>
