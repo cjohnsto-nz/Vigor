@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
@@ -15,7 +16,6 @@ namespace Vigor
     public class VigorModSystem : ModSystem
     {
         private const string NETWORK_CHANNEL = "vigor:statesync";
-        private const float SYNC_INTERVAL_SECONDS = 0.1f; // How often to sync state (in seconds) - 10 FPS
         
         private ICoreClientAPI _capi;
         private ICoreServerAPI _sapi;
@@ -23,12 +23,17 @@ namespace Vigor
         private HudVigorDebug _debugHud;
         private long _syncTimerId;
         private long _drainTickId;
+        private long _diagnosticsAutoDumpListenerId;
+        private bool _initialDiagnosticsSnapshotCaptured;
+        private float _timeSinceLastAutoDiagnosticsSnapshot;
         private IClientNetworkChannel _clientNetworkChannel;
         private IServerNetworkChannel _serverNetworkChannel;
         private VigorAPI _activeStaminaDrainHandler;
         
         // Dictionary to store synchronized client-side stamina state by player UID
-        private Dictionary<string, StaminaStatePacket> _clientStaminaState = new Dictionary<string, StaminaStatePacket>();
+        private readonly ConcurrentDictionary<string, StaminaStatePacket> _clientStaminaState = new ConcurrentDictionary<string, StaminaStatePacket>();
+
+        public event Action<StaminaStatePacket> LocalPlayerStaminaStateUpdated;
         
         public static VigorModSystem Instance { get; private set; }
         public VigorConfig CurrentConfig { get; private set; }
@@ -56,14 +61,12 @@ namespace Vigor
             // Register network channel for stamina state synchronization
             api.Network.RegisterChannel(NETWORK_CHANNEL)
                 .RegisterMessageType<StaminaStatePacket>();
-                
-            Logger.Event($"[{ModId}] Network channel '{NETWORK_CHANNEL}' registered for stamina state synchronization");
-            
-            // Always log API availability for debugging integration
-            Logger.Event($"[{ModId}] {api.Side} API initialized and available via ModLoader.GetModSystem<VigorModSystem>().API");
-            
-            // Log config/debug mode too
-            if (CurrentConfig.DebugMode) Logger.Notification($"[{ModId}] API available for other mods via ModLoader.GetModSystem<VigorModSystem>().API");
+
+            if (CurrentConfig.DebugMode)
+            {
+                Logger.Debug($"[{ModId}] Registered network channel '{NETWORK_CHANNEL}'");
+                Logger.Debug($"[{ModId}] {api.Side} API available via ModLoader.GetModSystem<VigorModSystem>().API");
+            }
         }
 
         // Added property to check for HydrateOrDiedrate mod
@@ -76,12 +79,15 @@ namespace Vigor
             
             // Create client-specific API instance
             ClientAPI = new VigorAPI(api);
-            Logger.Event($"[{ModId}] Client API initialized and available via ModLoader.GetModSystem<VigorModSystem>().ClientAPI");
             
             // Set up client network channel and register packet handler
             _clientNetworkChannel = api.Network.GetChannel(NETWORK_CHANNEL);
             _clientNetworkChannel.SetMessageHandler<StaminaStatePacket>(OnStaminaStatePacket);
-            Logger.Event($"[{ModId}] Client network handler registered for stamina state synchronization");
+            if (CurrentConfig.DebugMode)
+            {
+                Logger.Debug($"[{ModId}] Client API initialized");
+                Logger.Debug($"[{ModId}] Client stamina sync handler registered");
+            }
             
             // Check if HydrateOrDiedrate mod is installed
             IsHydrateOrDiedrateLoaded = api.ModLoader.IsModEnabled("hydrateordiedrate");
@@ -98,14 +104,94 @@ namespace Vigor
 
             api.Input.RegisterHotKey("vigordebug", "Vigor: Toggle Debug Info", GlKeys.F8, HotkeyType.GUIOrOtherControls);
             api.Input.SetHotKeyHandler("vigordebug", OnToggleDebugHud);
+            api.Input.RegisterHotKey("vigordiagdump", "Vigor: Dump Diagnostics Snapshot", GlKeys.F6, HotkeyType.GUIOrOtherControls);
+            api.Input.SetHotKeyHandler("vigordiagdump", OnDumpDiagnostics);
 
-            if (CurrentConfig.DebugMode) Logger.Notification($"[{ModId}] Client-side systems started.");
+            if (CurrentConfig.EnableDiagnosticsSnapshots)
+            {
+                _diagnosticsAutoDumpListenerId = api.Event.RegisterGameTickListener(OnDiagnosticsTick, 1000);
+            }
+
+            if (CurrentConfig.EnableDiagnosticsSnapshots)
+            {
+                if (CurrentConfig.EnableAutomaticDiagnosticsSnapshots)
+                {
+                    Logger.Notification($"Stamina systems ready. Diagnostics enabled. Press F6 for a manual snapshot. Automatic snapshots every {Math.Max(1, CurrentConfig.DiagnosticsSnapshotIntervalMinutes)} minutes.");
+                }
+                else
+                {
+                    Logger.Notification("Stamina systems ready. Diagnostics enabled. Press F6 for a manual snapshot.");
+                }
+            }
+            else
+            {
+                Logger.Notification("Stamina systems ready. Diagnostics disabled in vigor.json.");
+            }
         }
 
         private bool OnToggleDebugHud(KeyCombination comb)
         {
             _debugHud?.Toggle();
             return true;
+        }
+
+        private bool OnDumpDiagnostics(KeyCombination comb)
+        {
+            try
+            {
+                if (!CurrentConfig.EnableDiagnosticsSnapshots)
+                {
+                    _capi?.Logger.Notification("Diagnostics snapshots are disabled in the Vigor config.");
+                    return true;
+                }
+
+                var filePath = DumpDiagnosticsSnapshot("manual");
+                _capi?.Logger.Notification($"Diagnostics snapshot written to {filePath}");
+            }
+            catch (Exception ex)
+            {
+                _capi?.Logger.Error($"Failed to dump diagnostics snapshot: {ex}");
+            }
+
+            return true;
+        }
+
+        private void OnDiagnosticsTick(float dt)
+        {
+            try
+            {
+                if (_capi?.World?.Player?.Entity == null) return;
+                if (!CurrentConfig.EnableDiagnosticsSnapshots) return;
+
+                if (!_initialDiagnosticsSnapshotCaptured && CurrentConfig.CaptureInitialDiagnosticsSnapshot)
+                {
+                    var initialPath = DumpDiagnosticsSnapshot("initial");
+                    _initialDiagnosticsSnapshotCaptured = true;
+                    _timeSinceLastAutoDiagnosticsSnapshot = 0f;
+                    _capi.Logger.Notification($"Initial diagnostics snapshot written to {initialPath}");
+                    return;
+                }
+
+                if (!CurrentConfig.EnableAutomaticDiagnosticsSnapshots) return;
+
+                _timeSinceLastAutoDiagnosticsSnapshot += dt;
+                float intervalSeconds = Math.Max(1, CurrentConfig.DiagnosticsSnapshotIntervalMinutes) * 60f;
+                if (_timeSinceLastAutoDiagnosticsSnapshot < intervalSeconds) return;
+
+                _timeSinceLastAutoDiagnosticsSnapshot = 0f;
+                var filePath = DumpDiagnosticsSnapshot("auto");
+                _capi.Logger.Notification($"Automatic diagnostics snapshot written to {filePath}");
+            }
+            catch (Exception ex)
+            {
+                _capi?.Logger.Error($"Failed to write automatic diagnostics snapshot: {ex}");
+            }
+        }
+
+        private string DumpDiagnosticsSnapshot(string reason)
+        {
+            VigorDiagnostics.SetGauge("clientStaminaState.count", _clientStaminaState.Count);
+            return VigorDiagnostics.DumpSnapshotToFile(ModId, reason);
         }
         
         /// <summary>
@@ -127,6 +213,8 @@ namespace Vigor
                 
                 // Store the updated state in our client-side dictionary
                 _clientStaminaState[packet.PlayerUID] = packet;
+                VigorDiagnostics.Increment("network.packetReceived");
+                VigorDiagnostics.SetGauge("clientStaminaState.count", _clientStaminaState.Count);
                 
                 if (isFirstPacket && isOwnPlayer)
                 {
@@ -139,30 +227,14 @@ namespace Vigor
                     _capi.Logger.Debug($"[{ModId}] Received stamina state: {packet.CurrentStamina}/{packet.MaxStamina}, Exhausted: {packet.IsExhausted}");
                 }
                 
-                // Update player entity's WatchedAttributes if this is our own player
-                // This ensures the client-side EntityBehaviorVigorStamina will have access to the data
-                if (isOwnPlayer && _capi.World.Player.Entity != null)
+                if (isOwnPlayer)
                 {
-                    var staminaTree = _capi.World.Player.Entity.WatchedAttributes.GetOrAddTreeAttribute(EntityBehaviorVigorStamina.Name);
-                    if (staminaTree != null)
+                    VigorDiagnostics.Increment("network.packetLocalPlayerCached");
+                    LocalPlayerStaminaStateUpdated?.Invoke(packet);
+
+                    if (CurrentConfig.DebugMode)
                     {
-                        // Use batched tree for client-side packet handling with immediate sync
-                        var batchedTree = new BatchedTreeAttribute(staminaTree, _capi.World.Player.Entity.WatchedAttributes, EntityBehaviorVigorStamina.Name, CurrentConfig.DebugMode);
-                        batchedTree.SetFloat("currentStamina", packet.CurrentStamina);
-                        batchedTree.SetFloat("maxStamina", packet.MaxStamina);
-                        batchedTree.SetBool("isExhausted", packet.IsExhausted);
-                        
-                        // Force immediate sync for client-side packet updates
-                        batchedTree.ForceSync();
-                        
-                        if (CurrentConfig.DebugMode)
-                        {
-                            _capi.Logger.Debug($"[{ModId}] Updated local WatchedAttributes with received stamina data");
-                        }
-                    }
-                    else if (CurrentConfig.DebugMode)
-                    {
-                        _capi.Logger.Warning($"[{ModId}] Could not get or create stamina tree attribute for player entity");
+                        _capi.Logger.Debug($"[{ModId}] Cached local stamina packet without mirroring to WatchedAttributes");
                     }
                 }
             }
@@ -277,6 +349,7 @@ namespace Vigor
                     }
                     
                     _serverNetworkChannel.SendPacket(packet, serverPlayer);
+                    VigorDiagnostics.Increment("network.packetSent");
                     
                     // Log more frequently when in debug mode to identify synchronization issues
                     if (CurrentConfig.DebugMode && (_sapi.World.Rand.NextDouble() < 0.2)) // Increased log frequency to 20%
@@ -310,7 +383,6 @@ namespace Vigor
             
             // Create server-specific API instance
             ServerAPI = new VigorAPI(api);
-            Logger.Event($"[{ModId}] Server API initialized and available via ModLoader.GetModSystem<VigorModSystem>().ServerAPI");
             
             // Set up server network channel
             _serverNetworkChannel = api.Network.GetChannel(NETWORK_CHANNEL);
@@ -318,14 +390,19 @@ namespace Vigor
             {
                 Logger.Error($"[{ModId}] Failed to get network channel for stamina state sync");
             }
-            else
+            else if (CurrentConfig.DebugMode)
             {
-                Logger.Event($"[{ModId}] Server network channel ready for stamina state synchronization");
+                Logger.Debug($"[{ModId}] Server API initialized");
+                Logger.Debug($"[{ModId}] Server network channel ready");
             }
             
             // Register periodic sync timer
-            _syncTimerId = api.Event.RegisterGameTickListener(SyncStaminaState, (int)(SYNC_INTERVAL_SECONDS * 1000));
-            Logger.Event($"[{ModId}] Registered stamina state sync timer with interval {SYNC_INTERVAL_SECONDS}s");
+            float syncIntervalSeconds = Math.Max(0.03f, CurrentConfig.StaminaSyncIntervalSeconds);
+            _syncTimerId = api.Event.RegisterGameTickListener(SyncStaminaState, (int)(syncIntervalSeconds * 1000));
+            if (CurrentConfig.DebugMode)
+            {
+                Logger.Debug($"[{ModId}] Registered stamina state sync timer ({syncIntervalSeconds}s)");
+            }
             
             // Listen for player disconnect to clean up sync state
             api.Event.PlayerDisconnect += OnPlayerDisconnect;
@@ -333,7 +410,7 @@ namespace Vigor
             // Listen for player join to attach behavior
             api.Event.PlayerJoin += OnPlayerJoin;
             
-            if (CurrentConfig.DebugMode) Logger.Notification($"[{ModId}] Server-side systems started with state synchronization.");
+            Logger.Notification($"[{ModId}] Server stamina synchronization ready.");
         }
 
         /// <summary>
@@ -456,7 +533,10 @@ namespace Vigor
                 else
                 {
                     // Use a loud, unconditional log level to ensure this message always appears.
-                Logger.Warning($"[{ModId}] Config loaded. DebugMode is set to: {CurrentConfig.DebugMode}");
+                if (CurrentConfig.DebugMode)
+                {
+                    Logger.Notification("Debug mode enabled.");
+                }
                 }
             }
             catch (Exception e)

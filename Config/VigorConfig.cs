@@ -1,13 +1,14 @@
-using Newtonsoft.Json;
-
 namespace Vigor.Config
 {
     public class VigorConfig
     {
         // General Settings
         public bool DebugMode { get; set; } = false; // Disabled by default
-
-        
+        public bool EnableDebugChatMessages { get; set; } = false;
+        public bool EnableDiagnosticsSnapshots { get; set; } = false;
+        public bool EnableAutomaticDiagnosticsSnapshots { get; set; } = false;
+        public bool CaptureInitialDiagnosticsSnapshot { get; set; } = true;
+        public int DiagnosticsSnapshotIntervalMinutes { get; set; } = 10;
         public bool HideRecoveryThreshold { get; set; } = false; // If true, do not render the exhaustion threshold indicator
         public bool HideStaminaOnFull { get; set; } = false;
 
@@ -23,12 +24,13 @@ namespace Vigor.Config
 
         
         // Syncing interval (for client-server updates)
-        public float StaminaSyncIntervalSeconds { get; set; } = 0.25f;
+        public float StaminaSyncIntervalSeconds { get; set; } = 0.05f;
         
         // --- Client-Side Prediction Settings ---
         public bool EnableClientSidePrediction { get; set; } = true; // Enable client-side stamina prediction for responsiveness
+        public bool UseNewClientPredictionModel { get; set; } = true; // True = local simulation predictor, false = legacy interpolation predictor
         public float ClientPredictionUpdateRate { get; set; } = 16f; // Client prediction update interval in milliseconds (~60 FPS)
-        public float ServerReconciliationRate { get; set; } = 100f; // Server reconciliation interval in milliseconds (10 FPS)
+        public float ServerReconciliationRate { get; set; } = 100f; // Used for low-priority HUD polling (prediction no longer waits on this)
         public bool EnableServerReconciliation { get; set; } = false; // Enable server reconciliation for UI (can cause jankiness)
         public float ReconciliationThreshold { get; set; } = 5.0f; // Threshold for server reconciliation
         public float NutritionUpdateRate { get; set; } = 500f; // How often to update nutrition bonuses (ms)

@@ -18,6 +18,7 @@ namespace Vigor.Behaviors
         private VigorConfig Config => VigorModSystem.Instance.CurrentConfig;
         private ILogger Logger => VigorModSystem.Instance.Logger;
         private string ModId => VigorModSystem.Instance.ModId;
+        private bool ShouldSendDebugChat => Config.DebugMode && Config.EnableDebugChatMessages;
         
         // New fields for the refactored nutrition bonus system
         private VigorNutritionBonuses _nutritionBonuses;
@@ -36,7 +37,6 @@ namespace Vigor.Behaviors
         // private bool? _lastLoggedExhaustionState = null; // Unused, removed.
         private bool? _lastLoggedIdleBonusState = null; // To prevent log spam for idle bonus
         private bool _wasOverallRegenPreventedLastTick = false; // Tracks if regen was prevented by any means last tick for debug logging
-        private bool _hasLoggedSwimStats = false; // To prevent log spam for swim stats
         private bool _hasLoggedWaterState = false; // To prevent log spam for water state
         
         // Obsolete batching variables removed - now handled by BatchedTreeAttribute
@@ -99,8 +99,6 @@ namespace Vigor.Behaviors
                 _batchedStaminaTree?.SetBool("isExhausted", value);
             }
         }
-
-        private float _lastReceivedStamina;
         private ICoreAPI api;
 
         public EntityBehaviorVigorStamina(Entity entity) : base(entity)
@@ -129,24 +127,35 @@ namespace Vigor.Behaviors
             // Debug messaging
             if (Config.DebugMode)
             {
-                IServerPlayer serverPlayer = entity.World.PlayerByUid(player.PlayerUID) as IServerPlayer;
-                serverPlayer?.SendMessage(GlobalConstants.GeneralChatGroup,
-                    $"[{ModId} DEBUG] Landing detected via OnFallToGround. Velocity: {fallSpeed:F1}",
-                    EnumChatType.Notification);
+                SendDebugChat(player, $"Landing detected via OnFallToGround. Velocity: {fallSpeed:F1}");
             }
+        }
+
+        private void SendDebugChat(EntityPlayer player, string message)
+        {
+            if (!ShouldSendDebugChat || player?.Player == null) return;
+
+            (player.Player as IServerPlayer)?.SendMessage(
+                GlobalConstants.GeneralChatGroup,
+                $"[{ModId} DEBUG] {message}",
+                EnumChatType.Notification);
         }
 
         public override void Initialize(EntityProperties properties, JsonObject attributes)
         {
             base.Initialize(properties, attributes);
-            Logger.Notification($"[{ModId} DEBUG] EntityBehaviorVigorStamina initialized for entity {entity.EntityId}.");
+            if (Config.DebugMode)
+            {
+                Logger.Debug($"[{ModId}] Stamina behavior initialized for entity {entity.EntityId}.");
+            }
         }
 
         public override void OnGameTick(float deltaTime)
         {
+            if (entity.World.Side == EnumAppSide.Client) return; // Server-side logic only
+
             // Update nutrition bonuses periodically.
             _timeSinceBonusUpdate += deltaTime;
-            bool maxStaminaUpdated = false;
             if (_timeSinceBonusUpdate >= 1f) // Update every second
             {
                 if (entity is EntityPlayer playerForBonuses)
@@ -163,11 +172,8 @@ namespace Vigor.Behaviors
                 {
                     // Update using batched tree to prevent immediate MarkPathDirty
                     _batchedStaminaTree?.SetFloat("calculatedMaxStamina", newCalculatedMax);
-                    maxStaminaUpdated = true;
                 }
             }
-
-            if (entity.World.Side == EnumAppSide.Client) return; // Server-side logic only
 
             if (StaminaTree == null)
             {
@@ -180,7 +186,10 @@ namespace Vigor.Behaviors
                 _batchedStaminaTree.SetFloat("calculatedMaxStamina", Config.MaxStamina * _nutritionBonuses.MaxStaminaModifier);
                 _wasExhaustedLastTick = false;
                 _batchedStaminaTree.ForceSync(); // Force immediate sync for initialization
-                Logger.Notification($"[{ModId}] Initialized VigorStamina attributes for entity {entity.EntityId}. DebugMode: {Config.DebugMode}");
+                if (Config.DebugMode)
+                {
+                    Logger.Debug($"[{ModId}] Initialized stamina attributes for entity {entity.EntityId}.");
+                }
                 return;
             }
             
@@ -189,25 +198,27 @@ namespace Vigor.Behaviors
             float storedBaseMaxStamina = _batchedStaminaTree.GetFloat("maxStamina", -1);
             if (Math.Abs(storedBaseMaxStamina - Config.MaxStamina) > 0.01f)
             {
-                Logger.Notification($"[{ModId}] Updating base max stamina for entity {entity.EntityId} from {storedBaseMaxStamina} to {Config.MaxStamina} due to config change");
+                if (Config.DebugMode)
+                {
+                    Logger.Debug($"[{ModId}] Updating base max stamina for entity {entity.EntityId} from {storedBaseMaxStamina} to {Config.MaxStamina}.");
+                }
                 
                 // Config updates using batched tree with immediate sync
                 float currentStaminaRatio = storedBaseMaxStamina > 0 ? (_batchedStaminaTree.GetFloat("currentStamina", Config.MaxStamina) / storedBaseMaxStamina) : 1f;
                 _batchedStaminaTree.SetFloat("maxStamina", Config.MaxStamina);
                 _batchedStaminaTree.SetFloat("currentStamina", Config.MaxStamina * currentStaminaRatio);
                 _batchedStaminaTree.SetFloat("calculatedMaxStamina", Config.MaxStamina * _nutritionBonuses.MaxStaminaModifier);
-                
-                maxStaminaUpdated = true;
                 _batchedStaminaTree.ForceSync(); // Force immediate sync for config changes
             }
 
             if (entity is not EntityPlayer plr || plr.Player?.WorldData.CurrentGameMode == EnumGameMode.Creative)
             {
+                _batchedStaminaTree?.TryFlush();
                 return;
             }
 
             // Determine if player is effectively stationary. Calculated early for use in both cost and regen logic.
-            bool isPlayerIdle = plr.ServerPos.Motion.LengthSq() < 0.0001; // Threshold for being considered idle (e.g., speed < 0.01 units/sec)
+            bool isPlayerIdle = plr.Pos.Motion.LengthSq() < 0.0001; // Threshold for being considered idle (e.g., speed < 0.01 units/sec)
 
             bool isPlayerSitting = plr.ServerControls.FloorSitting; // True if player is sitting on the floor
 
@@ -222,12 +233,12 @@ namespace Vigor.Behaviors
                 else walkSpeedDebuffValue = Math.Max(-0.99f, -(1.0f - Config.ExhaustionWalkSpeedMultiplier));
 
                 plr.Stats.Set("walkspeed", WALK_SPEED_DEBUFF_CODE, walkSpeedDebuffValue, false);
-                if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Applied walk speed debuff. TargetFactor: {Config.ExhaustionWalkSpeedMultiplier}, AppliedValue: {walkSpeedDebuffValue:F2}", EnumChatType.Notification);
+                SendDebugChat(plr, $"Applied walk speed debuff. TargetFactor: {Config.ExhaustionWalkSpeedMultiplier}, AppliedValue: {walkSpeedDebuffValue:F2}");
             }
             else if (!IsExhausted && _wasExhaustedLastTick) // Just recovered from exhaustion
             {
                 plr.Stats.Remove("walkspeed", WALK_SPEED_DEBUFF_CODE);
-                if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Removed walk speed debuff.", EnumChatType.Notification);
+                SendDebugChat(plr, "Removed walk speed debuff.");
             }
             _wasExhaustedLastTick = IsExhausted;
 
@@ -240,7 +251,7 @@ namespace Vigor.Behaviors
             
             // Check for fatiguing actions
             bool isJumping = plr.Controls.Jump && !plr.OnGround && !_jumpCooldown;
-            bool isSprinting = physicalSprintKeyHeldThisTick && plr.ServerPos.Motion.LengthSq() > Config.SprintDetectionSpeedThreshold;
+            bool isSprinting = physicalSprintKeyHeldThisTick && plr.Pos.Motion.LengthSq() > Config.SprintDetectionSpeedThreshold;
             bool isSwimming = plr.FeetInLiquid && !plr.OnGround;
 
             float costPerSecond = 0f;
@@ -269,7 +280,7 @@ namespace Vigor.Behaviors
                 CurrentStamina -= Config.JumpStaminaCost * _nutritionBonuses.JumpCostModifier;
                 _jumpCooldown = true;
                 fatiguingActionThisTick = true;
-                if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Jump stamina cost: {Config.JumpStaminaCost * _nutritionBonuses.JumpCostModifier:F2} applied.", EnumChatType.Notification);
+                SendDebugChat(plr, $"Jump stamina cost: {Config.JumpStaminaCost * _nutritionBonuses.JumpCostModifier:F2} applied.");
             }
 
             if (fatiguingActionThisTick)
@@ -340,11 +351,11 @@ namespace Vigor.Behaviors
                     if (fatiguingActionThisTick) reason += "fatiguingActionThisTick ";
                     if (activityPreventsRegenerationThisTick) reason += "activityPreventsRegen(sprint/swim) ";
                     if (cooldownActive) reason += "cooldown ";
-                    (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Stamina regen PAUSED. Reason: {reason.Trim()}", EnumChatType.Notification);
+                    SendDebugChat(plr, $"Stamina regen PAUSED. Reason: {reason.Trim()}");
                 }
                 else if (!overallRegenPreventedThisTick && _wasOverallRegenPreventedLastTick)
                 {
-                    (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Stamina regen RESUMED.", EnumChatType.Notification);
+                    SendDebugChat(plr, "Stamina regen RESUMED.");
                 }
                 _wasOverallRegenPreventedLastTick = overallRegenPreventedThisTick;
 
@@ -353,13 +364,13 @@ namespace Vigor.Behaviors
                     if (isPlayerIdle && plr.OnGround && !plr.FeetInLiquid) {
                         if (_lastLoggedIdleBonusState != true) 
                         {
-                            (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Idle stamina regen bonus ACTIVE. Rate: {actualStaminaGainPerSecond:F2}/s", EnumChatType.Notification);
+                            SendDebugChat(plr, $"Idle stamina regen bonus ACTIVE. Rate: {actualStaminaGainPerSecond:F2}/s");
                             _lastLoggedIdleBonusState = true;
                         }
                     } else {
                         if (_lastLoggedIdleBonusState == true)
                         {
-                            (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Idle stamina regen bonus INACTIVE.", EnumChatType.Notification);
+                            SendDebugChat(plr, "Idle stamina regen bonus INACTIVE.");
                             _lastLoggedIdleBonusState = false;
                         }
                     }
@@ -379,7 +390,7 @@ namespace Vigor.Behaviors
                     else
                     {
                         IsExhausted = false;
-                        if (Config.DebugMode) (plr.Player as IServerPlayer)?.SendMessage(GlobalConstants.GeneralChatGroup, $"[{ModId} DEBUG] Player RECOVERED from exhaustion. CurrentStamina: {CurrentStamina:F2}", EnumChatType.Notification);
+                        SendDebugChat(plr, $"Player RECOVERED from exhaustion. CurrentStamina: {CurrentStamina:F2}");
                         _lastLoggedIdleBonusState = null;
                     }
                 }
@@ -402,7 +413,7 @@ namespace Vigor.Behaviors
                 {
                     if (Config.DebugMode)
                     {
-                        Logger.Notification($"[{ModId} DEBUG] Player swimming state check: IsExhausted={IsExhausted}, isSwimming={isSwimming}, FeetInLiquid={plr.FeetInLiquid}, OnGround={plr.OnGround}");
+                        Logger.Debug($"[{ModId}] Swimming state: IsExhausted={IsExhausted}, IsSwimming={isSwimming}, FeetInLiquid={plr.FeetInLiquid}, OnGround={plr.OnGround}");
                     }
                     _hasLoggedWaterState = true;
                 }
@@ -423,10 +434,6 @@ namespace Vigor.Behaviors
                 {
                     api.Logger.Debug($"Player {plr.Player.PlayerName} has no air due to exhaustion.");
                 }
-            }
-            else
-            {
-                _hasLoggedSwimStats = false;
             }
 
             bool previousSinkingState = entity.WatchedAttributes.GetBool(ATTR_EXHAUSTED_SINKING, false);
@@ -461,7 +468,9 @@ namespace Vigor.Behaviors
             _batchedStaminaTree?.SetFloat("debug_mod_recoveryThreshold", _nutritionBonuses.RecoveryThresholdModifier);
             _batchedStaminaTree?.SetFloat("debug_mod_recoveryDelay", _nutritionBonuses.RecoveryDelayModifier);
             
-            // Batching is now handled by timer-based system, not per-tick TrySync
+            // Flush batched state on the main game thread only.
+            _batchedStaminaTree?.TryFlush();
+
             // Always log profiling stats to verify batching effectiveness
             if (entity is EntityPlayer debugPlayer)
             {
@@ -469,9 +478,16 @@ namespace Vigor.Behaviors
             }
         }
 
+        public override void OnEntityDespawn(EntityDespawnData despawn)
+        {
+            base.OnEntityDespawn(despawn);
+            _batchedStaminaTree?.Dispose();
+            _batchedStaminaTree = null;
+        }
+
         // SetDebugBool and SetDebugFloat methods removed - now using batched tree interface directly
 
-        // MarkDirty method removed - now handled by BatchedTreeAttribute.TrySync()
+        // MarkDirty method removed - now handled by BatchedTreeAttribute flushing on the main game thread.
         
         // LogSyncStats method removed - profiling now handled by BatchedTreeAttribute
         
