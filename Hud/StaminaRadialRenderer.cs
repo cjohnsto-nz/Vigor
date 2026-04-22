@@ -41,29 +41,23 @@ namespace Vigor.Hud
             float inner = GameMath.Clamp(cfg.RadialInnerRadius, 0.0f, 1.0f);
             float outer = GameMath.Clamp(cfg.RadialOuterRadius, inner + 0.01f, 2.0f);
 
-            // Upload full ring background
-            // Full ring; start at 12 o'clock for consistency
             MeshData bgRing = CreateRing(inner, outer, Steps, -Math.PI / 2, 2 * Math.PI, ColorUtil.BlackArgb);
             _backgroundRingMesh = _capi.Render.UploadMesh(bgRing);
 
-            // Upload stamina meshes for 0..100%
             _staminaMeshes = new MeshRef[Steps + 1];
             for (int i = 0; i <= Steps; i++)
             {
                 float percent = i / (float)Steps;
-                // Clockwise fill from 12 o'clock: negative angle range
                 MeshData mesh = CreateRing(inner, outer, Steps, -Math.PI / 2, -2 * Math.PI * percent, ColorUtil.BlackArgb);
                 _staminaMeshes[i] = _capi.Render.UploadMesh(mesh);
             }
 
-            // Precompute thin threshold indicator arcs for each percent position
             _thresholdMeshes = new MeshRef[Steps + 1];
             float thOuter = outer;
-            float thInner = (inner + outer) * 0.5f; // mid-line thickness
-            double tickRange = 2 * Math.PI * 0.01f; // ~1% arc
+            float thInner = (inner + outer) * 0.5f;
+            double tickRange = 2 * Math.PI * 0.01f;
             for (int i = 0; i <= Steps; i++)
             {
-                // Clockwise position from 12 o'clock
                 double start = -Math.PI / 2 - 2 * Math.PI * (i / (double)Steps);
                 MeshData arc = CreateArc(thInner, thOuter, Steps, start, tickRange, ColorUtil.BlackArgb);
                 _thresholdMeshes[i] = _capi.Render.UploadMesh(arc);
@@ -81,7 +75,6 @@ namespace Vigor.Hud
             bool exhausted = snap.IsExhausted;
             float threshold = GameMath.Clamp(snap.RecoveryThreshold, 0f, max);
 
-            // Hide when visually full with tolerance, to account for prediction rounding
             if (cfg.HideStaminaOnFull && (stamina / max) >= 0.999f && !exhausted)
             {
                 return;
@@ -103,7 +96,6 @@ namespace Vigor.Hud
             shader.Uniform("tex2d", 0);
             shader.Uniform("noTexture", 1f);
 
-            // Background ring (flashes red when exhausted)
             if (exhausted)
             {
                 float flashAlpha = 0.3f + 0.2f * GameMath.Sin(_exhaustedFlashTimer * 5f);
@@ -115,16 +107,13 @@ namespace Vigor.Hud
             }
             _capi.Render.RenderMesh(_backgroundRingMesh);
 
-            // Stamina ring (yellow - match statbar coloration)
             float staminaPercentRaw = GameMath.Clamp(stamina / max, 0f, 1f);
-            // Exponential smoothing to reduce visible stutter from reconciliation
             if (_smoothedPercent < 0f)
             {
                 _smoothedPercent = staminaPercentRaw;
             }
             else
             {
-                // smoothing factor ~12 Hz response
                 float alpha = 1f - (float)Math.Exp(-dt * 12f);
                 _smoothedPercent = GameMath.Clamp(_smoothedPercent + (staminaPercentRaw - _smoothedPercent) * alpha, 0f, 1f);
             }
@@ -133,16 +122,16 @@ namespace Vigor.Hud
             shader.Uniform("rgbaIn", new Vec4f(0.85f, 0.65f, 0f, 0.7f));
             _capi.Render.RenderMesh(_staminaMeshes[idx]);
 
-            // Recovery threshold indicator (draw only when exhausted to match bar semantics)
-            if (!VigorModSystem.Instance.CurrentConfig.HideRecoveryThreshold && exhausted && threshold > 0)
+            bool showThreshold = !cfg.HideRecoveryThreshold && exhausted && threshold > 0f;
+
+            if (showThreshold)
             {
                 float thPercent = GameMath.Clamp(threshold / max, 0f, 1f);
                 int thIdx = GameMath.Clamp((int)(thPercent * Steps), 0, Steps);
-                // Draw a small band (±1 step) around the threshold for better visibility
                 int halfWidth = 1;
                 int start = GameMath.Clamp(thIdx - halfWidth, 0, Steps);
                 int end = GameMath.Clamp(thIdx + halfWidth, 0, Steps);
-                shader.Uniform("rgbaIn", new Vec4f(1f, 0.65f, 0f, 0.5f)); // orange accent
+                shader.Uniform("rgbaIn", new Vec4f(1f, 0.65f, 0f, 0.5f));
                 for (int i = start; i <= end; i++)
                 {
                     _capi.Render.RenderMesh(_thresholdMeshes[i]);
@@ -185,7 +174,6 @@ namespace Vigor.Hud
 
         private static MeshData CreateRing(float innerRadius, float outerRadius, int divisions, double startAngle, double angleRange, int color)
         {
-            // Heavily inspired by Bloodshed's MeshUtil.GetRing
             int segs = Math.Max(1, divisions * 4);
             MeshData mesh = new MeshData(segs * 2 * 2, segs * 2 * 3, false, true, true, false);
             mesh.SetMode(EnumDrawMode.Triangles);
@@ -215,7 +203,6 @@ namespace Vigor.Hud
 
         private static MeshData CreateArc(float innerRadius, float outerRadius, int divisions, double startAngle, double angleRange, int color)
         {
-            // Same as CreateRing but offset by startAngle
             int segs = Math.Max(1, divisions * 4);
             MeshData mesh = new MeshData(segs * 2 * 2, segs * 2 * 3, false, true, true, false);
             mesh.SetMode(EnumDrawMode.Triangles);
