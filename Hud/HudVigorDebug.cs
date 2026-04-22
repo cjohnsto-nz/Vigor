@@ -190,6 +190,7 @@ namespace Vigor.Hud
             right.AppendLine($"Local packets cached: {VigorDiagnostics.GetCounter("network.packetLocalPlayerCached")}");
 
             right.AppendLine("\n--- Prediction Diagnostics ---");
+            right.AppendLine($"Prediction mode: {(VigorModSystem.Instance.CurrentConfig.UseNewClientPredictionModel ? "New" : "Legacy")}");
             right.AppendLine($"Sync interval: {VigorModSystem.Instance.CurrentConfig.StaminaSyncIntervalSeconds * 1000f:F0} ms");
             right.AppendLine($"Prediction error: {VigorDiagnostics.GetGauge("prediction.error"):F2}");
             right.AppendLine($"Pending correction: {VigorDiagnostics.GetGauge("prediction.pendingCorrection"):F2}");

@@ -28,6 +28,7 @@ namespace Vigor.Config
         
         // --- Client-Side Prediction Settings ---
         public bool EnableClientSidePrediction { get; set; } = true; // Enable client-side stamina prediction for responsiveness
+        public bool UseNewClientPredictionModel { get; set; } = true; // True = local simulation predictor, false = legacy interpolation predictor
         public float ClientPredictionUpdateRate { get; set; } = 16f; // Client prediction update interval in milliseconds (~60 FPS)
         public float ServerReconciliationRate { get; set; } = 100f; // Used for low-priority HUD polling (prediction no longer waits on this)
         public bool EnableServerReconciliation { get; set; } = false; // Enable server reconciliation for UI (can cause jankiness)

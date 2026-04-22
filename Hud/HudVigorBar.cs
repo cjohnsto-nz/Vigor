@@ -17,7 +17,7 @@ namespace Vigor.Hud
         private bool _useRadial;
         private StaminaRadialRenderer _radialRenderer;
         private Func<StaminaSnapshot> _snapshotProvider;
-        private ClientStaminaPredictor _staminaPredictor;
+        private IClientStaminaPredictor _staminaPredictor;
         private long _clientTickListener;
         private long _serverSyncListener;
         private long _visualUpdateListener;
@@ -83,7 +83,9 @@ namespace Vigor.Hud
             // Initialize client-side predictor if enabled
             if (config.EnableClientSidePrediction)
             {
-                _staminaPredictor = new ClientStaminaPredictor(capi, config);
+                _staminaPredictor = config.UseNewClientPredictionModel
+                    ? new ClientStaminaPredictor(capi, config)
+                    : new LegacyClientStaminaPredictor(capi, config);
                 _staminaPredictor.OnStaminaChanged += OnPredictedStaminaChanged;
                 
                 // High-frequency client-side updates for smooth prediction

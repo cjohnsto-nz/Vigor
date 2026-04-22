@@ -11,7 +11,7 @@ namespace Vigor.Client
     /// Predicts the local player's stamina using the same stamina rules as the server,
     /// then reconciles gently against authoritative server packets.
     /// </summary>
-    public class ClientStaminaPredictor
+    public class ClientStaminaPredictor : IClientStaminaPredictor
     {
         private const float IdleMotionThresholdSq = 0.0001f;
         private const float LowerBoundaryEpsilon = 0.05f;
@@ -55,6 +55,7 @@ namespace Vigor.Client
         private const float RecoveryUpwardCorrectionScale = 0.25f;
 
         public float CurrentRecoveryThreshold => _displayRecoveryThreshold;
+        public string ModeName => "LocalSimulation";
 
         public ClientStaminaPredictor(ICoreClientAPI capi, VigorConfig config)
         {
