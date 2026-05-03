@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Vintagestory.API.Client;
 using Vintagestory.API.Common;
+using Vintagestory.API.Datastructures;
 using Vintagestory.API.Server;
 using Vigor.API;
 using Vigor.Behaviors;
@@ -10,13 +11,17 @@ using Vigor.Config;
 using Vigor.Hud;
 using Vigor.Utils;
 using Vigor.Core;
+using Vintagestory.Client.NoObf;
 
 namespace Vigor
 {
     public class VigorModSystem : ModSystem
     {
         private const string NETWORK_CHANNEL = "vigor:statesync";
+        private const string ConfigLibConfigSavedEvent = "configlib:vigor:config-saved";
+        private const string ConfigLibConfigReloadEvent = "configlib:config-reload";
         
+        private ICoreAPI _api;
         private ICoreClientAPI _capi;
         private ICoreServerAPI _sapi;
         private HudVigorBar _vigorHud;
@@ -48,8 +53,10 @@ namespace Vigor
         public override void Start(ICoreAPI api)
         {
             base.Start(api);
+            _api = api;
             Instance = this;
             LoadConfig(api);
+            RegisterConfigReloadListeners(api);
             
             // Create general API instance for backward compatibility
             // Note: This instance should be avoided in client/server contexts
@@ -127,6 +134,138 @@ namespace Vigor
             {
                 Logger.Notification("Stamina systems ready. Diagnostics disabled in vigor.json.");
             }
+        }
+
+        private void RegisterConfigReloadListeners(ICoreAPI api)
+        {
+            api.Event.RegisterEventBusListener(OnConfigLibConfigSaved, filterByEventName: ConfigLibConfigSavedEvent);
+            api.Event.RegisterEventBusListener(OnConfigLibConfigReload, filterByEventName: ConfigLibConfigReloadEvent);
+        }
+
+        private void OnConfigLibConfigSaved(string eventName, ref EnumHandling handling, IAttribute data)
+        {
+            if (!IsVigorConfigEvent(data))
+            {
+                return;
+            }
+
+            ReloadConfigAndApplyRuntimeChanges();
+        }
+
+        private void OnConfigLibConfigReload(string eventName, ref EnumHandling handling, IAttribute data)
+        {
+            if (!IsVigorConfigEvent(data))
+            {
+                return;
+            }
+
+            ReloadConfigAndApplyRuntimeChanges();
+        }
+
+        private bool IsVigorConfigEvent(IAttribute data)
+        {
+            return (data as ITreeAttribute)?.GetAsString("domain") == ModId;
+        }
+
+        private void ReloadConfigAndApplyRuntimeChanges()
+        {
+            if (_api == null)
+            {
+                return;
+            }
+
+            LoadConfig(_api);
+
+            if (_sapi != null)
+            {
+                RefreshServerSyncTimer();
+            }
+
+            if (_capi != null)
+            {
+                RefreshClientRuntimeConfigState();
+            }
+        }
+
+        private void RefreshServerSyncTimer()
+        {
+            if (_sapi == null)
+            {
+                return;
+            }
+
+            if (_syncTimerId != 0)
+            {
+                _sapi.Event.UnregisterGameTickListener(_syncTimerId);
+                _syncTimerId = 0;
+            }
+
+            float syncIntervalSeconds = Math.Max(0.03f, CurrentConfig.StaminaSyncIntervalSeconds);
+            _syncTimerId = _sapi.Event.RegisterGameTickListener(SyncStaminaState, (int)(syncIntervalSeconds * 1000));
+        }
+
+        private void RefreshClientRuntimeConfigState()
+        {
+            if (_capi == null)
+            {
+                return;
+            }
+
+            RefreshClientDiagnosticsListener();
+            RecreateClientHudElements();
+        }
+
+        private void RefreshClientDiagnosticsListener()
+        {
+            if (_capi == null)
+            {
+                return;
+            }
+
+            if (_diagnosticsAutoDumpListenerId != 0)
+            {
+                _capi.Event.UnregisterGameTickListener(_diagnosticsAutoDumpListenerId);
+                _diagnosticsAutoDumpListenerId = 0;
+            }
+
+            _initialDiagnosticsSnapshotCaptured = false;
+            _timeSinceLastAutoDiagnosticsSnapshot = 0f;
+
+            if (CurrentConfig.EnableDiagnosticsSnapshots)
+            {
+                _diagnosticsAutoDumpListenerId = _capi.Event.RegisterGameTickListener(OnDiagnosticsTick, 1000);
+            }
+        }
+
+        private void RecreateClientHudElements()
+        {
+            if (_capi == null)
+            {
+                return;
+            }
+
+            DisposeClientDialog(_vigorHud);
+            DisposeClientDialog(_debugHud);
+
+            _vigorHud = new HudVigorBar(_capi);
+            _debugHud = new HudVigorDebug(_capi);
+            _capi.Gui.RegisterDialog(_vigorHud, _debugHud);
+        }
+
+        private void DisposeClientDialog(GuiDialog dialog)
+        {
+            if (dialog == null || _capi == null)
+            {
+                return;
+            }
+
+            dialog.TryClose();
+            if (_capi.World is ClientMain clientMain)
+            {
+                clientMain.UnregisterDialog(dialog);
+            }
+
+            dialog.Dispose();
         }
 
         private bool OnToggleDebugHud(KeyCombination comb)
