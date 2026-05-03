@@ -68,6 +68,7 @@ namespace Vigor.Hud
         {
             var cfg = VigorModSystem.Instance.CurrentConfig;
             var snap = _snapshotProvider?.Invoke() ?? default;
+            var radialBarColor = VigorHudStyle.ResolveRadialBarColor(cfg);
             if (snap.MaxStamina <= 0) return;
 
             float stamina = GameMath.Clamp(snap.Stamina, 0f, snap.MaxStamina);
@@ -119,7 +120,7 @@ namespace Vigor.Hud
             }
 
             int idx = GameMath.Clamp((int)(_smoothedPercent * Steps), 0, Steps);
-            shader.Uniform("rgbaIn", new Vec4f(0.85f, 0.65f, 0f, 0.7f));
+            shader.Uniform("rgbaIn", radialBarColor);
             _capi.Render.RenderMesh(_staminaMeshes[idx]);
 
             bool showThreshold = !cfg.HideRecoveryThreshold && exhausted && threshold > 0f;
@@ -131,7 +132,7 @@ namespace Vigor.Hud
                 int halfWidth = 1;
                 int start = GameMath.Clamp(thIdx - halfWidth, 0, Steps);
                 int end = GameMath.Clamp(thIdx + halfWidth, 0, Steps);
-                shader.Uniform("rgbaIn", new Vec4f(1f, 0.65f, 0f, 0.5f));
+                shader.Uniform("rgbaIn", new Vec4f(radialBarColor.R, radialBarColor.G, radialBarColor.B, Math.Max(0.5f, radialBarColor.A)));
                 for (int i = start; i <= end; i++)
                 {
                     _capi.Render.RenderMesh(_thresholdMeshes[i]);

@@ -46,6 +46,9 @@
     <Compile Remove="Gui\**" />
     <Compile Remove="_decomp_vs_api\**\*.cs" />
     <Compile Remove="_decomp_vs_lib\**\*.cs" />
+    <Compile Remove="_tmp_ilspy_survival\**\*.cs" />
+    <Compile Remove="_tmp_ilspy_vs122_startup\**\*.cs" />
+    <Compile Remove="_tmp_ilspy_windmill\**\*.cs" />
     <None Include="Gui\**" />
   </ItemGroup>
 
