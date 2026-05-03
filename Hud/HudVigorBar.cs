@@ -9,6 +9,14 @@ namespace Vigor.Hud
 {
     public class HudVigorBar : HudElement
     {
+        private const float VanillaStatsBarParentWidth = 850f;
+        private const double VanillaStatsBarParentHeight = 100.0;
+        private const double VanillaStatsBarWidthRatio = 0.41;
+        private const double VanillaHudRootOffsetY = 5.0;
+        private const double AboveVanillaStatusBarOffsetY = -15.0;
+        private const double VanillaRightStatusBarOffsetX = -1.0;
+        private const double HydrateOrDiedrateCompatibilityOffsetY = -22.0;
+
         // Linear bar UI elements (used when radial HUD is disabled)
         private GuiElementStatbar _staminaStatbar;
         
@@ -252,65 +260,54 @@ namespace Vigor.Hud
 
         private void ComposeGuis()
         {
-            // Match HydrateOrDiedrate's bar layout exactly
-            const float statsBarParentWidth = 850f;
-            const float statsBarWidth = statsBarParentWidth * 0.41f; // Same ratio as HydrateOrDiedrate
-            
-            // Position exactly like HydrateOrDiedrate
-            double yOffset = 96; // Exactly where HydrateOrDiedrate bar would be
-            double statsBarHeight = 10;
-            
-            // If HydrateOrDiedrate is loaded, offset to avoid overlap
-            if (VigorModSystem.Instance.IsHydrateOrDiedrateLoaded)
-            {
-                yOffset += 22; // Offset to avoid overlap with HydrateOrDiedrate bar
-            }
-            
-            // Create the parent bounds with CenterBottom alignment
+            var config = VigorModSystem.Instance.CurrentConfig;
+            bool alignLeft = config.HorizontalStatusBarAlignLeft;
+
             var statsBarBounds = new ElementBounds()
             {
                 Alignment = EnumDialogArea.CenterBottom,
                 BothSizing = ElementSizing.Fixed,
-                fixedWidth = statsBarParentWidth,
-                fixedHeight = 10
-            };
+                fixedWidth = VanillaStatsBarParentWidth,
+                fixedHeight = VanillaStatsBarParentHeight
+            }.WithFixedAlignmentOffset(0.0, VanillaHudRootOffsetY);
 
-            // Set up alignment
-            bool isRight = true;
-            double alignmentOffsetX = isRight ? -2.0 : 1.0;
-            
-            // Create bar bounds WITHOUT horizontal offset (will be applied to parent container)
+            double verticalOffset = AboveVanillaStatusBarOffsetY + GetHorizontalBarCompatibilityOffsetY(alignLeft) + config.HorizontalStatusBarVerticalOffset;
             var statbarBounds = ElementStdBounds.Statbar(
-                isRight ? EnumDialogArea.RightMiddle : EnumDialogArea.LeftMiddle, 
-                statsBarWidth
+                alignLeft ? EnumDialogArea.LeftTop : EnumDialogArea.RightTop,
+                VanillaStatsBarParentWidth * VanillaStatsBarWidthRatio
             )
-            .WithFixedHeight(10); // statbar height verified
+            .WithFixedHeight(10.0)
+            .WithFixedAlignmentOffset(alignLeft ? 0.0 : VanillaRightStatusBarOffsetX, verticalOffset);
 
-            // Create parent bounds and apply both X and Y offset at this level - the true parent container
-            var barParentBounds = statsBarBounds.FlatCopy()
-                .FixedGrow(0.0, statsBarHeight)
-                .WithFixedOffset(0, -yOffset)
-                .WithFixedAlignmentOffset(alignmentOffsetX, 0);
-            
-            // Set up bar colors with sufficient alpha for background visibility
-            double[] staminaBarColor = { 0.85, 0.65, 0, 0.5 }; // Use alpha 0.5 to match HydrateOrDiedrate
-
-            // Create composer using the parent bounds - exactly like HydrateOrDiedrate
-            var composer = capi.Gui.CreateCompo("vigorhud", barParentBounds);
-            
-            // Begin with child elements in stats bounds
+            var composer = capi.Gui.CreateCompo("vigorhud", statsBarBounds.FlatCopy().FixedGrow(0.0, 20.0));
             composer.BeginChildElements(statsBarBounds);
 
-            // Add main stamina bar
-            _staminaStatbar = new GuiElementStatbar(composer.Api, statbarBounds, staminaBarColor, isRight, false);
+            _staminaStatbar = new GuiElementStatbar(
+                composer.Api,
+                statbarBounds,
+                VigorHudStyle.ResolveHorizontalBarColor(config),
+                rightToLeft: !alignLeft,
+                hideable: false
+            );
             _staminaStatbar.PreviousValueDisplayTime = 3600f; // Keep the recovery marker persistent while active
             composer.AddInteractiveElement(_staminaStatbar, "staminabar");
             
-            // End child elements and compose
             composer.EndChildElements();
             Composers["vigorhud"] = composer.Compose();
 
             TryOpen();
+        }
+
+        private static double GetHorizontalBarCompatibilityOffsetY(bool alignLeft)
+        {
+            if (alignLeft)
+            {
+                return 0.0;
+            }
+
+            return VigorModSystem.Instance.IsHydrateOrDiedrateLoaded
+                ? HydrateOrDiedrateCompatibilityOffsetY
+                : 0.0;
         }
 
         /// <summary>

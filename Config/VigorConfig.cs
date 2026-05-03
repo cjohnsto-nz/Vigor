@@ -88,10 +88,22 @@ namespace Vigor.Config
         // --- HUD Options ---
         // When true, replaces the linear statbar with a centered radial element (purely a rendering change)
         public bool UseRadialHud { get; set; } = false;
+        // When true, places the horizontal stamina bar above the vanilla health bar instead of above the satiety bar.
+        public bool HorizontalStatusBarAlignLeft { get; set; } = true;
+        // Additional vertical offset in pixels for the horizontal stamina bar. Positive moves the bar down, negative moves it up.
+        public float HorizontalStatusBarVerticalOffset { get; set; } = 0f;
+        // Hex color for the horizontal stamina bar. Format: #RRGGBB
+        public string HorizontalStatusBarColorHex { get; set; } = "#D8A500";
+        // Opacity for the horizontal stamina bar from 0..1.
+        public float HorizontalStatusBarOpacity { get; set; } = 0.5f;
         // Radial appearance options (used only when UseRadialHud is true)
         public float RadialInnerRadius { get; set; } = 0.6f; // normalized ring inner radius
         public float RadialOuterRadius { get; set; } = 0.8f; // normalized ring outer radius
         public float RadialScale { get; set; } = 1.0f;       // global scale multiplier
+        // Hex color for the radial stamina bar. Format: #RRGGBB
+        public string RadialStatusBarColorHex { get; set; } = "#D8A500";
+        // Opacity for the radial stamina bar from 0..1.
+        public float RadialStatusBarOpacity { get; set; } = 0.7f;
         
 
         public VigorConfig()

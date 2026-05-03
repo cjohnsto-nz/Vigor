@@ -12,3 +12,5 @@ bin\Debug\ModPackage\
 # Code Workspace
 .vs
 *.code-workspace
+
+_tmp*

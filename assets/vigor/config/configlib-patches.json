@@ -1,0 +1,698 @@
+{
+  "version": 1,
+  "file": "vigor.json",
+  "patches": {},
+  "settings": [
+    {
+      "type": "separator",
+      "title": "General"
+    },
+    {
+      "code": "DebugMode",
+      "type": "boolean",
+      "default": false,
+      "ingui": "Debug mode",
+      "comment": "Enable Vigor debug output and the in-game debug overlay."
+    },
+    {
+      "code": "EnableDebugChatMessages",
+      "type": "boolean",
+      "default": false,
+      "ingui": "Debug chat messages",
+      "comment": "Send Vigor debug notifications to chat when debug mode is enabled."
+    },
+    {
+      "code": "EnableDiagnosticsSnapshots",
+      "type": "boolean",
+      "default": false,
+      "clientSide": true,
+      "ingui": "Diagnostics snapshots",
+      "comment": "Enable diagnostic snapshot capture on this client."
+    },
+    {
+      "code": "EnableAutomaticDiagnosticsSnapshots",
+      "type": "boolean",
+      "default": false,
+      "clientSide": true,
+      "ingui": "Automatic diagnostics snapshots",
+      "comment": "Capture diagnostics snapshots automatically while diagnostics are enabled."
+    },
+    {
+      "code": "CaptureInitialDiagnosticsSnapshot",
+      "type": "boolean",
+      "default": true,
+      "clientSide": true,
+      "ingui": "Capture initial diagnostics snapshot",
+      "comment": "Capture a snapshot shortly after joining a world when diagnostics are enabled."
+    },
+    {
+      "code": "DiagnosticsSnapshotIntervalMinutes",
+      "type": "integer",
+      "default": 10,
+      "clientSide": true,
+      "ingui": "Diagnostics snapshot interval (minutes)",
+      "comment": "Minutes between automatic diagnostic snapshots.",
+      "range": {
+        "min": 1,
+        "max": 120,
+        "step": 1
+      }
+    },
+    {
+      "type": "separator",
+      "title": "Stamina Mechanics"
+    },
+    {
+      "code": "MaxStamina",
+      "type": "float",
+      "default": 150.0,
+      "ingui": "Max stamina",
+      "comment": "Base maximum stamina before nutrition modifiers.",
+      "range": {
+        "min": 25.0,
+        "max": 500.0,
+        "step": 1.0
+      }
+    },
+    {
+      "code": "StaminaGainPerSecond",
+      "type": "float",
+      "default": 12.5,
+      "ingui": "Stamina gain per second",
+      "comment": "Base stamina recovery rate.",
+      "range": {
+        "min": 0.0,
+        "max": 100.0,
+        "step": 0.5
+      }
+    },
+    {
+      "code": "StaminaLossCooldownSeconds",
+      "type": "float",
+      "default": 1.0,
+      "ingui": "Stamina loss cooldown",
+      "comment": "Delay after exertion before stamina recovery begins.",
+      "range": {
+        "min": 0.0,
+        "max": 10.0,
+        "step": 0.1
+      }
+    },
+    {
+      "code": "StaminaExhaustionThreshold",
+      "type": "float",
+      "default": 0.0,
+      "ingui": "Exhaustion threshold",
+      "comment": "Stamina level at which the player becomes exhausted.",
+      "range": {
+        "min": 0.0,
+        "max": 150.0,
+        "step": 1.0
+      }
+    },
+    {
+      "code": "StaminaRequiredToRecoverPercent",
+      "type": "float",
+      "default": 0.4,
+      "ingui": "Recovery percent",
+      "comment": "Percent of max stamina required to recover from exhaustion.",
+      "range": {
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "IdleStaminaRegenMultiplier",
+      "type": "float",
+      "default": 2.0,
+      "ingui": "Idle regen multiplier",
+      "comment": "Recovery multiplier while idle.",
+      "range": {
+        "min": 0.0,
+        "max": 10.0,
+        "step": 0.1
+      }
+    },
+    {
+      "code": "SittingStaminaRegenMultiplier",
+      "type": "float",
+      "default": 1.5,
+      "ingui": "Sitting regen multiplier",
+      "comment": "Recovery multiplier while sitting.",
+      "range": {
+        "min": 0.0,
+        "max": 10.0,
+        "step": 0.1
+      }
+    },
+    {
+      "code": "SprintDetectionSpeedThreshold",
+      "type": "float",
+      "default": 0.005,
+      "ingui": "Sprint detection threshold",
+      "comment": "Velocity threshold used to detect sprinting.",
+      "range": {
+        "min": 0.0,
+        "max": 0.05,
+        "step": 0.001
+      }
+    },
+    {
+      "code": "StaminaSyncIntervalSeconds",
+      "type": "float",
+      "default": 0.05,
+      "ingui": "Server sync interval",
+      "comment": "How often the server sends stamina updates to clients.",
+      "range": {
+        "min": 0.03,
+        "max": 1.0,
+        "step": 0.01
+      }
+    },
+    {
+      "type": "separator",
+      "title": "Client Prediction"
+    },
+    {
+      "code": "EnableClientSidePrediction",
+      "type": "boolean",
+      "default": true,
+      "clientSide": true,
+      "ingui": "Enable client-side prediction",
+      "comment": "Smooth local stamina display by predicting changes on this client."
+    },
+    {
+      "code": "UseNewClientPredictionModel",
+      "type": "boolean",
+      "default": true,
+      "clientSide": true,
+      "ingui": "Use new prediction model",
+      "comment": "Use the local simulation predictor instead of the legacy interpolation model."
+    },
+    {
+      "code": "ClientPredictionUpdateRate",
+      "type": "float",
+      "default": 16.0,
+      "clientSide": true,
+      "ingui": "Prediction update rate (ms)",
+      "comment": "How often the local predictor updates on this client.",
+      "range": {
+        "min": 5.0,
+        "max": 100.0,
+        "step": 1.0
+      }
+    },
+    {
+      "code": "ServerReconciliationRate",
+      "type": "float",
+      "default": 100.0,
+      "clientSide": true,
+      "ingui": "Server reconciliation rate (ms)",
+      "comment": "How often the HUD polls synchronized server values on this client.",
+      "range": {
+        "min": 16.0,
+        "max": 1000.0,
+        "step": 1.0
+      }
+    },
+    {
+      "code": "EnableServerReconciliation",
+      "type": "boolean",
+      "default": false,
+      "clientSide": true,
+      "ingui": "Enable server reconciliation",
+      "comment": "Use stronger server correction for the stamina display."
+    },
+    {
+      "code": "ReconciliationThreshold",
+      "type": "float",
+      "default": 5.0,
+      "clientSide": true,
+      "ingui": "Reconciliation threshold",
+      "comment": "Minimum difference before the client display corrects toward the server.",
+      "range": {
+        "min": 0.0,
+        "max": 50.0,
+        "step": 0.1
+      }
+    },
+    {
+      "code": "NutritionUpdateRate",
+      "type": "float",
+      "default": 500.0,
+      "clientSide": true,
+      "ingui": "Nutrition update rate (ms)",
+      "comment": "How often the local predictor refreshes nutrition bonuses.",
+      "range": {
+        "min": 50.0,
+        "max": 5000.0,
+        "step": 10.0
+      }
+    },
+    {
+      "code": "InterpolationThresholdUp",
+      "type": "float",
+      "default": 24.0,
+      "clientSide": true,
+      "ingui": "Interpolation threshold up",
+      "comment": "Smoothing threshold for stamina recovery in the legacy predictor.",
+      "range": {
+        "min": 0.0,
+        "max": 100.0,
+        "step": 0.5
+      }
+    },
+    {
+      "code": "InterpolationThresholdDown",
+      "type": "float",
+      "default": 5.0,
+      "clientSide": true,
+      "ingui": "Interpolation threshold down",
+      "comment": "Smoothing threshold for stamina drain in the legacy predictor.",
+      "range": {
+        "min": 0.0,
+        "max": 100.0,
+        "step": 0.5
+      }
+    },
+    {
+      "type": "separator",
+      "title": "Action Costs"
+    },
+    {
+      "code": "SprintStaminaCostPerSecond",
+      "type": "float",
+      "default": 8.0,
+      "ingui": "Sprint stamina cost",
+      "comment": "Stamina drained per second while sprinting.",
+      "range": {
+        "min": 0.0,
+        "max": 50.0,
+        "step": 0.1
+      }
+    },
+    {
+      "code": "SwimStaminaCostPerSecond",
+      "type": "float",
+      "default": 3.0,
+      "ingui": "Swim stamina cost",
+      "comment": "Stamina drained per second while swimming.",
+      "range": {
+        "min": 0.0,
+        "max": 25.0,
+        "step": 0.1
+      }
+    },
+    {
+      "code": "JumpStaminaCost",
+      "type": "float",
+      "default": 10.0,
+      "ingui": "Jump stamina cost",
+      "comment": "Stamina drained for each jump.",
+      "range": {
+        "min": 0.0,
+        "max": 50.0,
+        "step": 0.5
+      }
+    },
+    {
+      "type": "separator",
+      "title": "Exhaustion Effects"
+    },
+    {
+      "code": "ExhaustionWalkSpeedMultiplier",
+      "type": "float",
+      "default": 0.5,
+      "ingui": "Exhausted walk speed multiplier",
+      "comment": "Movement speed multiplier while exhausted.",
+      "range": {
+        "min": 0.1,
+        "max": 1.0,
+        "step": 0.05
+      }
+    },
+    {
+      "code": "ExhaustedSwimOxygenDebuff",
+      "type": "float",
+      "default": 1.0,
+      "ingui": "Exhausted swim oxygen debuff",
+      "comment": "Additional oxygen drain factor while swimming exhausted.",
+      "range": {
+        "min": 0.0,
+        "max": 5.0,
+        "step": 0.1
+      }
+    },
+    {
+      "code": "ExhaustedSinkNudgeY",
+      "type": "float",
+      "default": -0.05,
+      "ingui": "Exhausted sink nudge",
+      "comment": "Downward velocity nudge per tick while exhausted in water.",
+      "range": {
+        "min": -1.0,
+        "max": 0.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "MaxExhaustedSinkSpeedY",
+      "type": "float",
+      "default": -0.5,
+      "ingui": "Max exhausted sink speed",
+      "comment": "Terminal sinking speed while exhausted in water.",
+      "range": {
+        "min": -5.0,
+        "max": 0.0,
+        "step": 0.05
+      }
+    },
+    {
+      "code": "ExhaustionLossCooldownSeconds",
+      "type": "float",
+      "default": 3.0,
+      "ingui": "Exhaustion loss cooldown",
+      "comment": "Additional delay after exertion before recovery starts when exhausted.",
+      "range": {
+        "min": 0.0,
+        "max": 20.0,
+        "step": 0.1
+      }
+    },
+    {
+      "type": "separator",
+      "title": "Nutrition Modifiers"
+    },
+    {
+      "code": "GrainMaxStaminaBonusAtMax",
+      "type": "float",
+      "default": 0.3,
+      "ingui": "Grain max stamina bonus",
+      "comment": "Maximum bonus to stamina capacity from full grain nutrition.",
+      "range": {
+        "min": 0.0,
+        "max": 2.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "GrainJumpCostBonusAtMax",
+      "type": "float",
+      "default": 0.2,
+      "ingui": "Grain jump cost bonus",
+      "comment": "Maximum jump-cost reduction from full grain nutrition.",
+      "range": {
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "ProteinRecoveryRateBonusAtMax",
+      "type": "float",
+      "default": 0.3,
+      "ingui": "Protein recovery bonus",
+      "comment": "Maximum recovery-rate bonus from full protein nutrition.",
+      "range": {
+        "min": 0.0,
+        "max": 2.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "ProteinMaxStaminaBonusAtMax",
+      "type": "float",
+      "default": 0.2,
+      "ingui": "Protein max stamina bonus",
+      "comment": "Maximum stamina-capacity bonus from full protein nutrition.",
+      "range": {
+        "min": 0.0,
+        "max": 2.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "VegetableDrainRateBonusAtMax",
+      "type": "float",
+      "default": 0.3,
+      "ingui": "Vegetable drain-rate bonus",
+      "comment": "Maximum drain-rate reduction from full vegetable nutrition.",
+      "range": {
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "VegetableRecoveryThresholdBonusAtMax",
+      "type": "float",
+      "default": 0.2,
+      "ingui": "Vegetable recovery-threshold bonus",
+      "comment": "Maximum recovery-threshold reduction from full vegetable nutrition.",
+      "range": {
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "DairyRecoveryThresholdBonusAtMax",
+      "type": "float",
+      "default": 0.3,
+      "ingui": "Dairy recovery-threshold bonus",
+      "comment": "Maximum recovery-threshold reduction from full dairy nutrition.",
+      "range": {
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "DairyRecoveryRateBonusAtMax",
+      "type": "float",
+      "default": 0.2,
+      "ingui": "Dairy recovery-rate bonus",
+      "comment": "Maximum recovery-rate bonus from full dairy nutrition.",
+      "range": {
+        "min": 0.0,
+        "max": 2.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "FruitJumpCostBonusAtMax",
+      "type": "float",
+      "default": 0.3,
+      "ingui": "Fruit jump-cost bonus",
+      "comment": "Maximum jump-cost reduction from full fruit nutrition.",
+      "range": {
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "FruitDrainRateBonusAtMax",
+      "type": "float",
+      "default": 0.2,
+      "ingui": "Fruit drain-rate bonus",
+      "comment": "Maximum drain-rate reduction from full fruit nutrition.",
+      "range": {
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "PooledNutritionRecoveryDelayReductionAtMax",
+      "type": "float",
+      "default": 0.5,
+      "ingui": "Pooled nutrition recovery delay reduction",
+      "comment": "Maximum recovery-delay reduction when all nutrition bars are full.",
+      "range": {
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "MinDrainRateModifier",
+      "type": "float",
+      "default": 0.1,
+      "ingui": "Minimum drain-rate modifier",
+      "comment": "Lower clamp for stamina drain-rate modifiers.",
+      "range": {
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "MinJumpCostModifier",
+      "type": "float",
+      "default": 0.1,
+      "ingui": "Minimum jump-cost modifier",
+      "comment": "Lower clamp for jump-cost modifiers.",
+      "range": {
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "MinRecoveryThresholdModifier",
+      "type": "float",
+      "default": 0.1,
+      "ingui": "Minimum recovery-threshold modifier",
+      "comment": "Lower clamp for recovery-threshold modifiers.",
+      "range": {
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "MinRecoveryDelayModifier",
+      "type": "float",
+      "default": 0.5,
+      "ingui": "Minimum recovery-delay modifier",
+      "comment": "Lower clamp for recovery-delay modifiers.",
+      "range": {
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.01
+      }
+    },
+    {
+      "type": "separator",
+      "title": "HUD"
+    },
+    {
+      "code": "HideRecoveryThreshold",
+      "type": "boolean",
+      "default": false,
+      "clientSide": true,
+      "ingui": "Hide recovery threshold",
+      "comment": "Hide the exhaustion recovery marker on the stamina HUD."
+    },
+    {
+      "code": "HideStaminaOnFull",
+      "type": "boolean",
+      "default": false,
+      "clientSide": true,
+      "ingui": "Hide stamina at full",
+      "comment": "Hide the stamina HUD when stamina is full."
+    },
+    {
+      "code": "UseRadialHud",
+      "type": "boolean",
+      "default": false,
+      "clientSide": true,
+      "ingui": "Use radial HUD",
+      "comment": "Display stamina as a radial HUD element instead of a horizontal bar."
+    },
+    {
+      "code": "HorizontalStatusBarAlignLeft",
+      "type": "boolean",
+      "default": true,
+      "clientSide": true,
+      "ingui": "Horizontal bar on left",
+      "comment": "Place the horizontal stamina bar above health instead of above satiety."
+    },
+    {
+      "code": "HorizontalStatusBarVerticalOffset",
+      "type": "float",
+      "default": 0.0,
+      "clientSide": true,
+      "ingui": "Horizontal bar vertical offset",
+      "comment": "Additional pixel offset for the horizontal stamina bar. Positive moves it down.",
+      "range": {
+        "min": -200.0,
+        "max": 200.0,
+        "step": 1.0
+      }
+    },
+    {
+      "code": "HorizontalStatusBarColorHex",
+      "type": "color",
+      "default": "#D8A500",
+      "clientSide": true,
+      "ingui": "Horizontal bar color",
+      "comment": "Tint for the horizontal stamina bar."
+    },
+    {
+      "code": "HorizontalStatusBarOpacity",
+      "type": "float",
+      "default": 0.5,
+      "clientSide": true,
+      "ingui": "Horizontal bar opacity",
+      "comment": "Opacity for the horizontal stamina bar.",
+      "range": {
+        "min": 0.05,
+        "max": 1.0,
+        "step": 0.05
+      }
+    },
+    {
+      "code": "RadialInnerRadius",
+      "type": "float",
+      "default": 0.6,
+      "clientSide": true,
+      "ingui": "Radial inner radius",
+      "comment": "Inner radius for the radial stamina ring.",
+      "range": {
+        "min": 0.1,
+        "max": 1.5,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "RadialOuterRadius",
+      "type": "float",
+      "default": 0.8,
+      "clientSide": true,
+      "ingui": "Radial outer radius",
+      "comment": "Outer radius for the radial stamina ring.",
+      "range": {
+        "min": 0.2,
+        "max": 2.0,
+        "step": 0.01
+      }
+    },
+    {
+      "code": "RadialScale",
+      "type": "float",
+      "default": 1.0,
+      "clientSide": true,
+      "ingui": "Radial scale",
+      "comment": "Overall size multiplier for the radial stamina HUD.",
+      "range": {
+        "min": 0.1,
+        "max": 4.0,
+        "step": 0.05
+      }
+    },
+    {
+      "code": "RadialStatusBarColorHex",
+      "type": "color",
+      "default": "#D8A500",
+      "clientSide": true,
+      "ingui": "Radial bar color",
+      "comment": "Tint for the radial stamina ring."
+    },
+    {
+      "code": "RadialStatusBarOpacity",
+      "type": "float",
+      "default": 0.7,
+      "clientSide": true,
+      "ingui": "Radial bar opacity",
+      "comment": "Opacity for the radial stamina ring.",
+      "range": {
+        "min": 0.05,
+        "max": 1.0,
+        "step": 0.05
+      }
+    }
+  ]
+}
