@@ -422,8 +422,23 @@ namespace Vigor.Hud
             }
         }
 
+        public override double InputOrder => 1.0;
         public override bool TryClose() => base.TryClose();
         public override bool ShouldReceiveKeyboardEvents() => false;
         public override bool Focusable => false;
+
+        // Keep the stamina HUD visually interactive-only so it doesn't claim
+        // the large parent composer bounds and block hotbar clicks underneath.
+        public override void OnMouseDown(MouseEvent args)
+        {
+        }
+
+        public override void OnMouseUp(MouseEvent args)
+        {
+        }
+
+        public override void OnMouseMove(MouseEvent args)
+        {
+        }
     }
 }

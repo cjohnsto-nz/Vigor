@@ -1,11 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
+    <TargetFramework Condition="'$(GameVersion)' == '1.21'">net8.0-windows</TargetFramework>
+    <TargetFramework Condition="'$(TargetFramework)' == ''">net10.0-windows</TargetFramework>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <OutputPath>bin\$(Configuration)\</OutputPath>
-    <GamePath>C:\Program Files (x86)\Steam\steamapps\common\Vintage Story</GamePath> <!-- Adjust if your VS install path is different -->
-    <GamePath Condition="Exists('C:\Users\$(USERNAME)\AppData\Roaming\Vintagestory')">C:\Users\$(USERNAME)\AppData\Roaming\Vintagestory</GamePath>
-    <GamePath Condition="Exists('$(VINTAGE_STORY)')">$(VINTAGE_STORY)</GamePath>
+    <GameVersion Condition="'$(GameVersion)' == '' and '$(VINTAGE_STORY_VERSION)' != ''">$(VINTAGE_STORY_VERSION)</GameVersion>
+    <GamePath Condition="'$(GamePath)' == '' and '$(GameVersion)' == '1.21' and '$(VINTAGE_STORY_121)' != ''">$(VINTAGE_STORY_121)</GamePath>
+    <GamePath Condition="'$(GamePath)' == '' and '$(GameVersion)' == '1.22' and '$(VINTAGE_STORY_122)' != ''">$(VINTAGE_STORY_122)</GamePath>
+    <GamePath Condition="'$(GamePath)' == '' and Exists('$(VINTAGE_STORY)')">$(VINTAGE_STORY)</GamePath>
+    <GamePath Condition="'$(GamePath)' == '' and Exists('C:\Users\$(USERNAME)\AppData\Roaming\Vintagestory')">C:\Users\$(USERNAME)\AppData\Roaming\Vintagestory</GamePath>
+    <GamePath Condition="'$(GamePath)' == '' and Exists('C:\Program Files (x86)\Steam\steamapps\common\Vintage Story')">C:\Program Files (x86)\Steam\steamapps\common\Vintage Story</GamePath>
     <DefineConstants>$(DefineConstants);VINTAGE_STORY</DefineConstants>
     <AssemblyName>Vigor</AssemblyName>
     <RootNamespace>Vigor</RootNamespace>
@@ -31,15 +35,14 @@
     </Reference>
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="System.Text.Json" Version="10.0.0" />
-  </ItemGroup>
-
   <PropertyGroup>
     <!-- Define the name of your mod's output folder -->
     <ModFolderName>Vigor</ModFolderName>
     <!-- Define where the packaged mod will be placed, relative to the project output path -->
     <ModPackageDir>ModPackage\$(ModFolderName)\</ModPackageDir>
+    <PackagedGameDependencyVersion Condition="'$(GameVersion)' != ''">$(GameVersion).0</PackagedGameDependencyVersion>
+    <PackagedGameDependencyVersion Condition="'$(PackagedGameDependencyVersion)' == ''">1.22.0</PackagedGameDependencyVersion>
+    <PackagedGameVersionKey Condition="'$(GameVersion)' != ''">$([System.String]::Copy('$(GameVersion)').Replace('.', ''))</PackagedGameVersionKey>
   </PropertyGroup>
 
   <ItemGroup>
@@ -66,6 +69,9 @@
 
     <!-- Copy modinfo.json -->
     <Copy SourceFiles="modinfo.json" DestinationFolder="$(FullModPackagePath)" />
+
+    <Message Text="Rewriting packaged modinfo.json game dependency to: $(PackagedGameDependencyVersion), game version key: $(PackagedGameVersionKey)" Importance="high" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -Command &quot;$modinfoPath = '$(FullModPackagePath)modinfo.json'; $modinfo = Get-Content -LiteralPath $modinfoPath -Raw | ConvertFrom-Json; if (-not $modinfo.dependencies) { $modinfo | Add-Member -NotePropertyName dependencies -NotePropertyValue (@{}) }; $modinfo.dependencies.game = '$(PackagedGameDependencyVersion)'; $v = [string]$modinfo.version; if ('$(PackagedGameVersionKey)' -ne '') { $parts = $v -split '\.'; $parts[0] = '$(PackagedGameVersionKey)'; $v = $parts -join '.' }; $modinfo.version = $v; $modinfo | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $modinfoPath -Encoding UTF8&quot;" />
 
     <!-- Copy the compiled DLL -->
     <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(FullModPackagePath)" />
