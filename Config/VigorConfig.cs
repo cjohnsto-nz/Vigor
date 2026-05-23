@@ -89,7 +89,7 @@ namespace Vigor.Config
         // When true, replaces the linear statbar with a centered radial element (purely a rendering change)
         public bool UseRadialHud { get; set; } = false;
         // When true, places the horizontal stamina bar above the vanilla health bar instead of above the satiety bar.
-        public bool HorizontalStatusBarAlignLeft { get; set; } = true;
+        public bool HorizontalStatusBarAlignLeft { get; set; } = false;
         // Additional vertical offset in pixels for the horizontal stamina bar. Positive moves the bar down, negative moves it up.
         public float HorizontalStatusBarVerticalOffset { get; set; } = 0f;
         // Hex color for the horizontal stamina bar. Format: #RRGGBB

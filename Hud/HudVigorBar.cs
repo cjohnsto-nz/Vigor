@@ -43,9 +43,13 @@ namespace Vigor.Hud
         private bool _autoHideEnabled;
         private bool _hudOpen;
         private double _fullElapsed;
+        private readonly bool _suppressVisualHud;
 
-        public HudVigorBar(ICoreClientAPI capi) : base(capi)
+        public event Action<StaminaSnapshot> DisplayStaminaChanged;
+
+        public HudVigorBar(ICoreClientAPI capi, bool suppressVisualHud = false) : base(capi)
         {
+            _suppressVisualHud = suppressVisualHud;
             var config = VigorModSystem.Instance.CurrentConfig;
             _useRadial = config.UseRadialHud;
             _hideStaminaOnFull = config.HideStaminaOnFull;
@@ -54,7 +58,11 @@ namespace Vigor.Hud
             VigorModSystem.Instance.LocalPlayerStaminaStateUpdated += OnLocalPlayerStaminaStateUpdated;
 
             // Only compose linear GUI when not using radial HUD
-            if (!_useRadial)
+            if (_suppressVisualHud)
+            {
+                _hudOpen = false;
+            }
+            else if (!_useRadial)
             {
                 ComposeGuis();
                 _hudOpen = true;
@@ -117,7 +125,7 @@ namespace Vigor.Hud
         public override void OnOwnPlayerDataReceived()
         {
             base.OnOwnPlayerDataReceived();
-            if (!_useRadial)
+            if (!_suppressVisualHud && !_useRadial)
             {
                 ComposeGuis(); // Recompose on player data received to ensure it's up to date
             }
@@ -228,6 +236,7 @@ namespace Vigor.Hud
         private void HandleAutoHide(float dt)
         {
             if (_useRadial) return; // linear HUD only for now
+            if (_suppressVisualHud) return;
             if (!_autoHideEnabled) return;
             // Determine current state
             float max = Math.Max(1f, _displayedMaxStamina);
@@ -261,6 +270,11 @@ namespace Vigor.Hud
         private void ComposeGuis()
         {
             var config = VigorModSystem.Instance.CurrentConfig;
+            if (_suppressVisualHud)
+            {
+                return;
+            }
+
             bool alignLeft = config.HorizontalStatusBarAlignLeft;
 
             var statsBarBounds = new ElementBounds()
@@ -318,10 +332,15 @@ namespace Vigor.Hud
             if (_useRadial)
             {
                 // Radial HUD pulls values from the snapshot provider during render. Nothing to do here.
+                NotifyDisplayStaminaChanged();
                 return;
             }
 
-            if (_staminaStatbar == null) return;
+            if (_staminaStatbar == null)
+            {
+                NotifyDisplayStaminaChanged();
+                return;
+            }
 
             // Clamp/snap values to avoid > max and guarantee full-hide behavior
             float max = Math.Max(1f, _displayedMaxStamina);
@@ -380,6 +399,23 @@ namespace Vigor.Hud
             // The line interval should also be based on the *current* max stamina
             // Draw a line every 100 stamina points, similar to the vanilla hunger bar.
             _staminaStatbar.SetLineInterval(1500f / max);
+
+            NotifyDisplayStaminaChanged(stam, max);
+        }
+
+        private void NotifyDisplayStaminaChanged(float? clampedStamina = null, float? clampedMaxStamina = null)
+        {
+            float max = Math.Max(1f, clampedMaxStamina ?? _displayedMaxStamina);
+            float stamina = clampedStamina ?? _displayedStamina;
+            stamina = Math.Clamp(stamina, 0f, max);
+
+            DisplayStaminaChanged?.Invoke(new StaminaSnapshot
+            {
+                Stamina = stamina,
+                MaxStamina = max,
+                IsExhausted = _displayedIsExhausted,
+                RecoveryThreshold = Math.Clamp(_displayedRecoveryThreshold, 0f, max)
+            });
         }
         
         /// <summary>
