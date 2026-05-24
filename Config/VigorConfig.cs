@@ -43,6 +43,8 @@ namespace Vigor.Config
         public float SprintStaminaCostPerSecond { get; set; } = 8f;
         public float SwimStaminaCostPerSecond { get; set; } = 3f;
         public float JumpStaminaCost { get; set; } = 10f;
+        public bool EnableRatlineStamina { get; set; } = true;
+        public float RatlineStaminaCostPerSecond { get; set; } = 3f;
         
         // --- Exhaustion Effects ---
         public float ExhaustionWalkSpeedMultiplier { get; set; } = 0.5f; // Walking slower when exhausted (0.5 = 50% speed)

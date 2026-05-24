@@ -1,0 +1,28 @@
+[
+  {
+    "file": "game:itemtypes/wearable/ratlines.json",
+    "op": "remove",
+    "path": "/attributes/attachableToEntity/seatConfigBySlotCode/Left Ratlines/attributes/tireWhenMounted",
+    "side": "Server"
+  },
+  {
+    "file": "game:itemtypes/wearable/ratlines.json",
+    "op": "add",
+    "path": "/attributes/attachableToEntity/seatConfigBySlotCode/Left Ratlines/attributes/vigorStaminaWhenMounted",
+    "value": true,
+    "side": "Server"
+  },
+  {
+    "file": "game:itemtypes/wearable/ratlines.json",
+    "op": "remove",
+    "path": "/attributes/attachableToEntity/seatConfigBySlotCode/Right Ratlines/attributes/tireWhenMounted",
+    "side": "Server"
+  },
+  {
+    "file": "game:itemtypes/wearable/ratlines.json",
+    "op": "add",
+    "path": "/attributes/attachableToEntity/seatConfigBySlotCode/Right Ratlines/attributes/vigorStaminaWhenMounted",
+    "value": true,
+    "side": "Server"
+  }
+]
