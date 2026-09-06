@@ -1,5 +1,14 @@
+param(
+    [ValidateSet("1.21", "1.22")]
+    [string]$GameVersion = "1.22",
+
+    [string]$Configuration = "Debug",
+
+    [switch]$NoLaunch
+)
+
 # Vigor Mod Deployment Script
-# This script stops the game, builds the project, copies the output, and restarts the game.
+# This script stops the game, builds the project, copies the output, and optionally restarts the selected game version.
 
 # --- Configuration ---
 $ErrorActionPreference = 'Stop' # Exit script on any error
@@ -7,7 +16,23 @@ $ProjectName = "Vigor"
 $ProjectRoot = $PSScriptRoot # This special variable gets the directory where the script is located
 $ModsDir = "C:\Users\chris\AppData\Roaming\VintagestoryData\Mods"
 $VSProcessName = "Vintagestory"
-$VSExePath = "C:\Users\chris\AppData\Roaming\Vintagestory\Vintagestory.exe"
+$VersionKey = $GameVersion -replace "\.", ""
+$VersionEnvName = "VINTAGE_STORY_$VersionKey"
+$ConfiguredGamePath = [Environment]::GetEnvironmentVariable($VersionEnvName, "User")
+
+if ([string]::IsNullOrWhiteSpace($ConfiguredGamePath)) {
+    throw "Environment variable '$VersionEnvName' is not set. Run tools/Set-VintageStoryEnv.ps1 for version $GameVersion first."
+}
+
+if (-not (Test-Path -LiteralPath $ConfiguredGamePath)) {
+    throw "Configured game path '$ConfiguredGamePath' does not exist."
+}
+
+$VSExePath = Join-Path $ConfiguredGamePath "Vintagestory.exe"
+
+if (-not (Test-Path -LiteralPath $VSExePath)) {
+    throw "Could not find Vintagestory.exe in '$ConfiguredGamePath'."
+}
 
 # --- Pre-Build: Stop Game ---
 Write-Host "Checking for running Vintage Story process..." -ForegroundColor Cyan
@@ -26,10 +51,10 @@ if (Test-Path "bin") { Remove-Item -Recurse -Force "bin" }
 if (Test-Path "obj") { Remove-Item -Recurse -Force "obj" }
 
 Write-Host "Cleaning project..." -ForegroundColor Cyan
-dotnet clean
+dotnet clean "-p:GameVersion=$GameVersion" "-p:GamePath=$ConfiguredGamePath" "-c" $Configuration
 
-Write-Host "Building Vigor project..." -ForegroundColor Cyan
-dotnet build
+Write-Host "Building Vigor project against Vintage Story $GameVersion..." -ForegroundColor Cyan
+dotnet build "-p:GameVersion=$GameVersion" "-p:GamePath=$ConfiguredGamePath" "-c" $Configuration
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "Build FAILED. Deployment aborted." -ForegroundColor Red
@@ -39,7 +64,7 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Build SUCCEEDED." -ForegroundColor Green
 
 # --- Deploy Step ---
-$SourceDir = Join-Path $ProjectRoot "bin\Debug\ModPackage\$ProjectName"
+$SourceDir = Join-Path $ProjectRoot "bin\$Configuration\ModPackage\$ProjectName"
 $TempDir = Join-Path $env:TEMP "VigorTempDeploy"
 
 if (-not (Test-Path $SourceDir)) {
@@ -57,7 +82,7 @@ if (Test-Path $ModInfoPath) {
 }
 
 # Create zip filename
-$ZipFileName = "vigor_$Version.zip"
+$ZipFileName = "vigor_${Version}.zip"
 $ZipFilePath = Join-Path $ModsDir $ZipFileName
 
 Write-Host "Deploying mod as '$ZipFileName' to '$ModsDir'..." -ForegroundColor Cyan
@@ -88,9 +113,35 @@ if (Test-Path $ZipFilePath) {
     Remove-Item -Force $ZipFilePath
 }
 
-# Create zip file
+# Create zip file with portable entry names. Compress-Archive can write Windows
+# path separators into ZIP entries, which macOS extracts as literal characters
+# instead of directory separators.
 Write-Host "Creating zip file '$ZipFilePath'"
-Compress-Archive -Path "$TempDir\*" -DestinationPath $ZipFilePath
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+$Archive = $null
+try {
+    $Archive = [System.IO.Compression.ZipFile]::Open(
+        $ZipFilePath,
+        [System.IO.Compression.ZipArchiveMode]::Create
+    )
+
+    $TempRoot = (Resolve-Path -LiteralPath $TempDir).Path.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    Get-ChildItem -LiteralPath $TempDir -File -Recurse | ForEach-Object {
+        $EntryName = $_.FullName.Substring($TempRoot.Length).Replace('\', '/')
+        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+            $Archive,
+            $_.FullName,
+            $EntryName,
+            [System.IO.Compression.CompressionLevel]::Optimal
+        ) | Out-Null
+    }
+} finally {
+    if ($null -ne $Archive) {
+        $Archive.Dispose()
+    }
+}
 
 # Copy to server location for automation
 $ServerPath = "\\x3200\wwwroot\vigor_debug.zip"
@@ -110,8 +161,12 @@ if (Test-Path "C:\Users\chris\AppData\Roaming\VintagestoryData\ModConfig\vigor.j
 }
 
 # --- Post-Deploy: Start Game ---
-Write-Host "`nDeployment COMPLETE. Launching Vintage Story..." -ForegroundColor Green
-Start-Process -FilePath $VSExePath
+if (-not $NoLaunch) {
+    Write-Host "`nDeployment COMPLETE. Launching Vintage Story $GameVersion..." -ForegroundColor Green
+    Start-Process -FilePath $VSExePath
+} else {
+    Write-Host "`nDeployment COMPLETE. Launch skipped for Vintage Story $GameVersion." -ForegroundColor Green
+}
 
 # --- Post-Launch: Commit Logs ---
 # Give the game a moment to start and write initial logs before committing.

@@ -14,3 +14,4 @@ bin\Debug\ModPackage\
 *.code-workspace
 
 _tmp*
+*.user

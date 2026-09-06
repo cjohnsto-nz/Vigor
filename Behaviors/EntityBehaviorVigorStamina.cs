@@ -253,6 +253,7 @@ namespace Vigor.Behaviors
             bool isJumping = plr.Controls.Jump && !plr.OnGround && !_jumpCooldown;
             bool isSprinting = physicalSprintKeyHeldThisTick && plr.Pos.Motion.LengthSq() > Config.SprintDetectionSpeedThreshold;
             bool isSwimming = plr.FeetInLiquid && !plr.OnGround;
+            bool isUsingRatlineStamina = IsUsingRatlineStamina(plr);
 
             float costPerSecond = 0f;
 
@@ -267,6 +268,12 @@ namespace Vigor.Behaviors
                 {
                     costPerSecond += Config.SwimStaminaCostPerSecond * _nutritionBonuses.DrainRateModifier;
                 }
+            }
+
+            if (isUsingRatlineStamina)
+            {
+                RemoveVanillaMountedStrength(plr);
+                costPerSecond += Config.RatlineStaminaCostPerSecond * _nutritionBonuses.DrainRateModifier;
             }
 
             if (costPerSecond > 0)
@@ -295,12 +302,20 @@ namespace Vigor.Behaviors
                 _isInitialExhaustion = true; // Set the one-time penalty flag.
             }
 
+            if (isUsingRatlineStamina && CurrentStamina <= 0)
+            {
+                CurrentStamina = 0;
+                IsExhausted = true;
+                _isInitialExhaustion = true;
+                plr.TryUnmount();
+            }
+
 
             // --- Stamina Regeneration & Exhaustion Recovery ---
             bool tryingToSprint = physicalSprintKeyHeldThisTick && (plr.ServerControls.Forward || plr.ServerControls.Backward || plr.ServerControls.Left || plr.ServerControls.Right) && !plr.ServerControls.Sneak;
             bool tryingToMoveInWater = isSwimming && (plr.ServerControls.Forward || plr.ServerControls.Backward || plr.ServerControls.Left || plr.ServerControls.Right || plr.ServerControls.Jump);
 
-            bool activityPreventsRegenerationThisTick = tryingToSprint || tryingToMoveInWater;
+            bool activityPreventsRegenerationThisTick = tryingToSprint || tryingToMoveInWater || isUsingRatlineStamina;
             float requiredCooldown;
             if (_isInitialExhaustion)
             {
@@ -451,6 +466,7 @@ namespace Vigor.Behaviors
             _batchedStaminaTree?.SetBool("debug_isSprinting", isSprinting);
             _batchedStaminaTree?.SetBool("debug_isSwimming", isSwimming);
             _batchedStaminaTree?.SetBool("debug_isJumping", isJumping);
+            _batchedStaminaTree?.SetBool("debug_isUsingRatlineStamina", isUsingRatlineStamina);
             _batchedStaminaTree?.SetBool("debug_fatiguingActionThisTick", fatiguingActionThisTick);
             _batchedStaminaTree?.SetBool("debug_regenPrevented", overallRegenPreventedThisTick);
 
@@ -498,6 +514,25 @@ namespace Vigor.Behaviors
         public void ResetFatigueTimer()
         {
             _timeSinceLastFatiguingAction = 0f;
+        }
+
+        private bool IsUsingRatlineStamina(EntityPlayer player)
+        {
+            if (!Config.EnableRatlineStamina)
+            {
+                return false;
+            }
+
+            JsonObject attributes = player.MountedOn?.Config?.Attributes;
+            return attributes != null && attributes.IsTrue("vigorStaminaWhenMounted");
+        }
+
+        private static void RemoveVanillaMountedStrength(EntityPlayer player)
+        {
+            if (player.WatchedAttributes is TreeAttribute tree && tree.HasAttribute("remainingMountedStrengthHours"))
+            {
+                tree.RemoveAttribute("remainingMountedStrengthHours");
+            }
         }
 
         public override string PropertyName()

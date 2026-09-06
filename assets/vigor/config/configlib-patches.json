@@ -317,6 +317,25 @@
       }
     },
     {
+      "code": "EnableRatlineStamina",
+      "type": "boolean",
+      "default": true,
+      "ingui": "Ratline stamina",
+      "comment": "Use Vigor stamina instead of vanilla mounted strength while on sailboat ratlines."
+    },
+    {
+      "code": "RatlineStaminaCostPerSecond",
+      "type": "float",
+      "default": 3.0,
+      "ingui": "Ratline stamina cost",
+      "comment": "Stamina drained per second while mounted on sailboat ratlines.",
+      "range": {
+        "min": 0.0,
+        "max": 25.0,
+        "step": 0.1
+      }
+    },
+    {
       "type": "separator",
       "title": "Exhaustion Effects"
     },

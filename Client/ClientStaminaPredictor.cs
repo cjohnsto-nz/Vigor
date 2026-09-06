@@ -224,6 +224,7 @@ namespace Vigor.Client
             bool isJumping = player.Controls.Jump && !isOnGround && !_jumpCooldown;
             bool isSprinting = physicalSprintKeyHeldThisTick && player.Pos.Motion.LengthSq() > _config.SprintDetectionSpeedThreshold;
             bool isSwimming = player.FeetInLiquid && !isOnGround;
+            bool isUsingRatlineStamina = IsUsingRatlineStamina(player);
 
             float predictedMaxStamina = _config.MaxStamina * _nutritionBonuses.MaxStaminaModifier;
             _displayMaxStamina = predictedMaxStamina;
@@ -240,6 +241,11 @@ namespace Vigor.Client
             if (isSwimming && !isPlayerIdle)
             {
                 costPerSecond += _config.SwimStaminaCostPerSecond * _nutritionBonuses.DrainRateModifier;
+            }
+
+            if (isUsingRatlineStamina)
+            {
+                costPerSecond += _config.RatlineStaminaCostPerSecond * _nutritionBonuses.DrainRateModifier;
             }
 
             if (costPerSecond > 0f)
@@ -276,7 +282,7 @@ namespace Vigor.Client
             bool tryingToMoveInWater = isSwimming &&
                                        (player.Controls.Forward || player.Controls.Backward || player.Controls.Left || player.Controls.Right || player.Controls.Jump);
 
-            bool activityPreventsRegenerationThisTick = tryingToSprint || tryingToMoveInWater;
+            bool activityPreventsRegenerationThisTick = tryingToSprint || tryingToMoveInWater || isUsingRatlineStamina;
 
             float requiredCooldown = (_isInitialExhaustion ? _config.ExhaustionLossCooldownSeconds : _config.StaminaLossCooldownSeconds) *
                                      _nutritionBonuses.RecoveryDelayModifier;
@@ -337,6 +343,38 @@ namespace Vigor.Client
             _predictedRecovering = regenAppliedThisTick;
             _lastLocalRecoveryGain = regenAppliedThisTick ? Math.Max(0f, _displayStamina - staminaAtTickStart) : 0f;
             _lastLocalStaminaDelta = _displayStamina - staminaAtTickStart;
+            VigorDiagnostics.SetGauge("prediction.isUsingRatlineStamina", isUsingRatlineStamina ? 1 : 0);
+        }
+
+        private bool IsUsingRatlineStamina(EntityPlayer player)
+        {
+            if (!_config.EnableRatlineStamina)
+            {
+                return false;
+            }
+
+            var mountedSeat = player.MountedOn;
+            var config = mountedSeat?.Config;
+            if (config == null)
+            {
+                return false;
+            }
+
+            var attributes = config.Attributes;
+            if (attributes != null && (attributes.IsTrue("vigorStaminaWhenMounted") || attributes.IsTrue("tireWhenMounted")))
+            {
+                return true;
+            }
+
+            return IsRatlineSeatCode(mountedSeat.SeatId)
+                || IsRatlineSeatCode(config.SeatId)
+                || IsRatlineSeatCode(config.APName)
+                || IsRatlineSeatCode(config.SelectionBox);
+        }
+
+        private static bool IsRatlineSeatCode(string value)
+        {
+            return !string.IsNullOrEmpty(value) && value.Contains("ratline", StringComparison.OrdinalIgnoreCase);
         }
 
         private void ApplyPendingServerCorrection(float deltaTime)

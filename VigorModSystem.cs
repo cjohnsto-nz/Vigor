@@ -26,9 +26,11 @@ namespace Vigor
         private ICoreServerAPI _sapi;
         private HudVigorBar _vigorHud;
         private HudVigorDebug _debugHud;
+        private HudUiVigorBridge _hudUiBridge;
         private long _syncTimerId;
         private long _drainTickId;
         private long _diagnosticsAutoDumpListenerId;
+        private long _configReloadCallbackId;
         private bool _initialDiagnosticsSnapshotCaptured;
         private float _timeSinceLastAutoDiagnosticsSnapshot;
         private IClientNetworkChannel _clientNetworkChannel;
@@ -104,10 +106,15 @@ namespace Vigor
                 Logger.Notification($"[{ModId}] HydrateOrDiedrate mod detected, will adjust HUD position.");
             }
 
-            _vigorHud = new HudVigorBar(api);
+            bool useHudUi = ShouldUseHudUiBar(api);
+            _vigorHud = new HudVigorBar(api, suppressVisualHud: useHudUi);
             _debugHud = new HudVigorDebug(api);
-            api.Gui.RegisterDialog(_vigorHud);
+            if (!useHudUi)
+            {
+                api.Gui.RegisterDialog(_vigorHud);
+            }
             api.Gui.RegisterDialog(_debugHud);
+            TryCreateHudUiBridge(api);
 
             api.Input.RegisterHotKey("vigordebug", "Vigor: Toggle Debug Info", GlKeys.F8, HotkeyType.GUIOrOtherControls);
             api.Input.SetHotKeyHandler("vigordebug", OnToggleDebugHud);
@@ -144,27 +151,48 @@ namespace Vigor
 
         private void OnConfigLibConfigSaved(string eventName, ref EnumHandling handling, IAttribute data)
         {
-            if (!IsVigorConfigEvent(data))
+            if (!IsVigorConfigEvent(eventName, data))
             {
                 return;
             }
 
-            ReloadConfigAndApplyRuntimeChanges();
+            ScheduleConfigReloadAndRuntimeRefresh();
         }
 
         private void OnConfigLibConfigReload(string eventName, ref EnumHandling handling, IAttribute data)
         {
-            if (!IsVigorConfigEvent(data))
+            if (!IsVigorConfigEvent(eventName, data))
             {
                 return;
             }
 
-            ReloadConfigAndApplyRuntimeChanges();
+            ScheduleConfigReloadAndRuntimeRefresh();
         }
 
-        private bool IsVigorConfigEvent(IAttribute data)
+        private bool IsVigorConfigEvent(string eventName, IAttribute data)
         {
-            return (data as ITreeAttribute)?.GetAsString("domain") == ModId;
+            string domain = (data as ITreeAttribute)?.GetAsString("domain");
+            return domain == ModId || (eventName == ConfigLibConfigReloadEvent && string.IsNullOrEmpty(domain));
+        }
+
+        private void ScheduleConfigReloadAndRuntimeRefresh()
+        {
+            if (_api == null)
+            {
+                return;
+            }
+
+            if (_configReloadCallbackId != 0)
+            {
+                _api.Event.UnregisterCallback(_configReloadCallbackId);
+                _configReloadCallbackId = 0;
+            }
+
+            _configReloadCallbackId = _api.Event.RegisterCallback(_ =>
+            {
+                _configReloadCallbackId = 0;
+                ReloadConfigAndApplyRuntimeChanges();
+            }, 250);
         }
 
         private void ReloadConfigAndApplyRuntimeChanges()
@@ -244,12 +272,54 @@ namespace Vigor
                 return;
             }
 
+            DisposeHudUiBridge();
             DisposeClientDialog(_vigorHud);
             DisposeClientDialog(_debugHud);
 
-            _vigorHud = new HudVigorBar(_capi);
+            bool useHudUi = ShouldUseHudUiBar(_capi);
+            _vigorHud = new HudVigorBar(_capi, suppressVisualHud: useHudUi);
             _debugHud = new HudVigorDebug(_capi);
-            _capi.Gui.RegisterDialog(_vigorHud, _debugHud);
+            if (useHudUi)
+            {
+                _capi.Gui.RegisterDialog(_debugHud);
+            }
+            else
+            {
+                _capi.Gui.RegisterDialog(_vigorHud, _debugHud);
+            }
+            TryCreateHudUiBridge(_capi);
+        }
+
+        private void TryCreateHudUiBridge(ICoreClientAPI api)
+        {
+            if (!ShouldUseHudUiBar(api) || _vigorHud == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _hudUiBridge = new HudUiVigorBridge(api, _vigorHud);
+                if (CurrentConfig.DebugMode)
+                {
+                    Logger.Debug($"[{ModId}] HudUI edge bar bridge initialized");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"[{ModId}] Failed to initialize HudUI support: {ex.Message}");
+            }
+        }
+
+        private void DisposeHudUiBridge()
+        {
+            _hudUiBridge?.Dispose();
+            _hudUiBridge = null;
+        }
+
+        private bool ShouldUseHudUiBar(ICoreClientAPI api)
+        {
+            return api?.ModLoader?.IsModEnabled("hudui") == true && CurrentConfig?.UseRadialHud != true;
         }
 
         private void DisposeClientDialog(GuiDialog dialog)
@@ -683,6 +753,18 @@ namespace Vigor
                 Logger.Error($"[{ModId}] Failed to load or create config: {e}");
                 CurrentConfig = new VigorConfig();
             }
+        }
+
+        public override void Dispose()
+        {
+            if (_configReloadCallbackId != 0 && _api != null)
+            {
+                _api.Event.UnregisterCallback(_configReloadCallbackId);
+                _configReloadCallbackId = 0;
+            }
+
+            DisposeHudUiBridge();
+            base.Dispose();
         }
     }
 }
