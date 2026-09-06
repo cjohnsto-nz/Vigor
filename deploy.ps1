@@ -113,9 +113,35 @@ if (Test-Path $ZipFilePath) {
     Remove-Item -Force $ZipFilePath
 }
 
-# Create zip file
+# Create zip file with portable entry names. Compress-Archive can write Windows
+# path separators into ZIP entries, which macOS extracts as literal characters
+# instead of directory separators.
 Write-Host "Creating zip file '$ZipFilePath'"
-Compress-Archive -Path "$TempDir\*" -DestinationPath $ZipFilePath
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+
+$Archive = $null
+try {
+    $Archive = [System.IO.Compression.ZipFile]::Open(
+        $ZipFilePath,
+        [System.IO.Compression.ZipArchiveMode]::Create
+    )
+
+    $TempRoot = (Resolve-Path -LiteralPath $TempDir).Path.TrimEnd('\', '/') + [System.IO.Path]::DirectorySeparatorChar
+    Get-ChildItem -LiteralPath $TempDir -File -Recurse | ForEach-Object {
+        $EntryName = $_.FullName.Substring($TempRoot.Length).Replace('\', '/')
+        [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile(
+            $Archive,
+            $_.FullName,
+            $EntryName,
+            [System.IO.Compression.CompressionLevel]::Optimal
+        ) | Out-Null
+    }
+} finally {
+    if ($null -ne $Archive) {
+        $Archive.Dispose()
+    }
+}
 
 # Copy to server location for automation
 $ServerPath = "\\x3200\wwwroot\vigor_debug.zip"
