@@ -1,4 +1,5 @@
-# Builds the mod from a version tag, attests build provenance, and publishes a GitHub release.
+# Builds the mod for each supported game version from a version tag, attests build provenance,
+# and publishes a GitHub release.
 # Verify a download with: gh attestation verify vigor_<version>.zip --repo cjohnsto-nz/Vigor
 name: Release
 
@@ -8,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Existing tag to release (e.g. v0.7.4)
+        description: Existing tag to release (e.g. v0.7.5). Adds any missing builds to an existing release.
         required: true
 
 permissions: {}
@@ -17,20 +18,32 @@ concurrency:
   group: release-${{ github.event.inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
+env:
+  TAG: ${{ github.event.inputs.tag || github.ref_name }}
+
 jobs:
-  release:
+  build:
+    name: Build for ${{ matrix.game }}
     runs-on: windows-latest
     permissions:
-      contents: write      # create the release
+      contents: read
       id-token: write      # sign the attestation
       attestations: write  # store the attestation
-    env:
-      TAG: ${{ github.event.inputs.tag || github.ref_name }}
-      GAME_VERSION: '1.22'
-      # Reference assemblies come from the public server build; pin its hash so the build inputs are fixed.
-      VS_SERVER_URL: https://cdn.vintagestory.at/gamefiles/stable/vs_server_win-x64_1.22.0.zip
-      VS_SERVER_SHA256: 8087d8f1b2022343d7d8c9e87585b617a463b840841db71ab8e6dac03a3ccc35
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # Reference assemblies come from the public server builds; pin their hashes so the build inputs are fixed.
+          - game: '1.21'
+            server: 1.21.7
+            server_sha256: cf78285f96935b11a60d23c73acfac99d549eb34a18453be3ef1812547079464
+          - game: '1.22'
+            server: 1.22.0
+            server_sha256: 8087d8f1b2022343d7d8c9e87585b617a463b840841db71ab8e6dac03a3ccc35
     steps:
+      # Keep the repository's LF line endings in packaged assets.
+      - run: git config --global core.autocrlf false
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: refs/tags/${{ env.TAG }}
@@ -46,19 +59,24 @@ jobs:
           $version = (Get-Content modinfo.json -Raw | ConvertFrom-Json).version
           if ($env:TAG -ne "v$version") { throw "Tag $env:TAG does not match modinfo.json version $version" }
 
-      - name: Fetch Vintage Story reference assemblies
+      - name: Fetch Vintage Story ${{ matrix.server }} reference assemblies
         shell: pwsh
+        env:
+          SERVER_URL: https://cdn.vintagestory.at/gamefiles/stable/vs_server_win-x64_${{ matrix.server }}.zip
+          SERVER_SHA256: ${{ matrix.server_sha256 }}
         run: |
           $zip = Join-Path $env:RUNNER_TEMP 'vs_server.zip'
-          Invoke-WebRequest -Uri $env:VS_SERVER_URL -OutFile $zip
+          Invoke-WebRequest -Uri $env:SERVER_URL -OutFile $zip
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
-          if ($hash -ne $env:VS_SERVER_SHA256) { throw "Unexpected server archive hash: $hash" }
+          if ($hash -ne $env:SERVER_SHA256) { throw "Unexpected server archive hash: $hash" }
           $gamePath = Join-Path $env:RUNNER_TEMP 'vintagestory'
           Expand-Archive $zip -DestinationPath $gamePath
           "GAME_PATH=$gamePath" >> $env:GITHUB_ENV
 
       - name: Build
         shell: pwsh
+        env:
+          GAME_VERSION: ${{ matrix.game }}
         run: >
           dotnet build Vigor.csproj -c Release
           "-p:GameVersion=$env:GAME_VERSION" "-p:GamePath=$env:GAME_PATH"
@@ -67,10 +85,16 @@ jobs:
       - name: Package
         id: package
         shell: pwsh
+        env:
+          GAME_VERSION: ${{ matrix.game }}
         run: |
           $packageRoot = (Resolve-Path 'bin/Release/ModPackage/Vigor').Path
           Copy-Item modicon.png $packageRoot -Force
-          $version = (Get-Content (Join-Path $packageRoot 'modinfo.json') -Raw | ConvertFrom-Json).version
+          $metadata = Get-Content (Join-Path $packageRoot 'modinfo.json') -Raw | ConvertFrom-Json
+          $version = $metadata.version
+          if ($metadata.dependencies.game -ne "$env:GAME_VERSION.0" -or -not $version.StartsWith($env:GAME_VERSION.Replace('.', '') + '.')) {
+              throw "Packaged modinfo.json ($version, game $($metadata.dependencies.game)) does not target $env:GAME_VERSION"
+          }
           New-Item -ItemType Directory -Force dist | Out-Null
           $archivePath = Join-Path (Resolve-Path dist) "vigor_$version.zip"
 
@@ -96,13 +120,8 @@ jobs:
           } finally { $archive.Dispose() }
 
           Copy-Item (Join-Path $packageRoot 'Vigor.dll') dist/
-          Push-Location dist
-          Get-ChildItem -File | ForEach-Object { "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } |
-              Set-Content SHA256SUMS.txt -Encoding ascii
-          Get-Content SHA256SUMS.txt
-          Pop-Location
+          Get-ChildItem dist -File | Get-FileHash -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  $(Split-Path $_.Path -Leaf)" }
           "archive=dist/vigor_$version.zip" >> $env:GITHUB_OUTPUT
-          "archive_name=vigor_$version.zip" >> $env:GITHUB_OUTPUT
 
       - name: Attest build provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
@@ -111,23 +130,74 @@ jobs:
             ${{ steps.package.outputs.archive }}
             dist/Vigor.dll
 
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: vigor-${{ matrix.game }}
+          path: ${{ steps.package.outputs.archive }}
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write  # create or update the release
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          path: dist
+          pattern: vigor-*
+          merge-multiple: true
+
       - name: Publish release
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-          ARCHIVE: ${{ steps.package.outputs.archive }}
-          ARCHIVE_NAME: ${{ steps.package.outputs.archive_name }}
+          GH_REPO: ${{ github.repository }}
         run: |
-          $notes = @"
-          ### Verifying this download
-          This archive was built by GitHub Actions from tag ``$env:TAG`` and carries a signed build provenance attestation. With the GitHub CLI:
+          $archives = @(Get-ChildItem dist -Filter 'vigor_*.zip' | Sort-Object Name)
+          function Get-Sum($file) { "$((Get-FileHash $file -Algorithm SHA256).Hash.ToLower())  $(Split-Path $file -Leaf)" }
+
+          $release = gh release view $env:TAG --json assets 2>$null | ConvertFrom-Json
+          if (-not $release) {
+              $archives | ForEach-Object { Get-Sum $_.FullName } | Set-Content dist/SHA256SUMS.txt -Encoding ascii
+              $list = ($archives | ForEach-Object { "- ``$($_.Name)``" }) -join "`n"
+              $first = $archives[0].Name
+              $notes = @"
+          ### Downloads
+          Pick the archive matching your game version (the first number is the game version, e.g. ``121`` = 1.21.x):
+
+          $list
+
+          ### Verifying a download
+          Each archive was built by GitHub Actions from tag ``$env:TAG`` and carries a signed build provenance attestation. With the GitHub CLI:
 
           ``````
-          gh attestation verify $env:ARCHIVE_NAME --repo $env:GITHUB_REPOSITORY
+          gh attestation verify $first --repo $env:GH_REPO
           ``````
 
           SHA-256 checksums are listed in ``SHA256SUMS.txt``.
           "@
-          gh release create $env:TAG $env:ARCHIVE dist/SHA256SUMS.txt `
-              --repo $env:GITHUB_REPOSITORY --verify-tag --title "Vigor $env:TAG" `
-              --notes $notes --generate-notes
+              gh release create $env:TAG $archives.FullName dist/SHA256SUMS.txt --verify-tag `
+                  --title "Vigor $env:TAG" --notes $notes --generate-notes
+              return
+          }
+
+          # The release already exists: add only the builds it is missing, never replace published files.
+          $existing = @($release.assets.name)
+          $missing = @($archives | Where-Object Name -notin $existing)
+          if (-not $missing) { Write-Host 'Release already has every build; nothing to add.'; return }
+
+          $sums = [ordered]@{}
+          if ('SHA256SUMS.txt' -in $existing) {
+              gh release download $env:TAG --pattern SHA256SUMS.txt --dir old
+              Get-Content old/SHA256SUMS.txt | ForEach-Object {
+                  $hash, $name = $_ -split '\s+', 2
+                  if ($name -in $existing) { $sums[$name] = $_ }
+              }
+          }
+          $missing | ForEach-Object { $sums[$_.Name] = Get-Sum $_.FullName }
+          $sums.Keys | Sort-Object | ForEach-Object { $sums[$_] } | Set-Content dist/SHA256SUMS.txt -Encoding ascii
+          Get-Content dist/SHA256SUMS.txt
+
+          gh release upload $env:TAG $missing.FullName
+          gh release upload $env:TAG dist/SHA256SUMS.txt --clobber
