@@ -1,0 +1,133 @@
+# Builds the mod from a version tag, attests build provenance, and publishes a GitHub release.
+# Verify a download with: gh attestation verify vigor_<version>.zip --repo cjohnsto-nz/Vigor
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to release (e.g. v0.7.4)
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write      # create the release
+      id-token: write      # sign the attestation
+      attestations: write  # store the attestation
+    env:
+      TAG: ${{ github.event.inputs.tag || github.ref_name }}
+      GAME_VERSION: '1.22'
+      # Reference assemblies come from the public server build; pin its hash so the build inputs are fixed.
+      VS_SERVER_URL: https://cdn.vintagestory.at/gamefiles/stable/vs_server_win-x64_1.22.0.zip
+      VS_SERVER_SHA256: 8087d8f1b2022343d7d8c9e87585b617a463b840841db71ab8e6dac03a3ccc35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Check tag matches modinfo version
+        shell: pwsh
+        run: |
+          $version = (Get-Content modinfo.json -Raw | ConvertFrom-Json).version
+          if ($env:TAG -ne "v$version") { throw "Tag $env:TAG does not match modinfo.json version $version" }
+
+      - name: Fetch Vintage Story reference assemblies
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'vs_server.zip'
+          Invoke-WebRequest -Uri $env:VS_SERVER_URL -OutFile $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
+          if ($hash -ne $env:VS_SERVER_SHA256) { throw "Unexpected server archive hash: $hash" }
+          $gamePath = Join-Path $env:RUNNER_TEMP 'vintagestory'
+          Expand-Archive $zip -DestinationPath $gamePath
+          "GAME_PATH=$gamePath" >> $env:GITHUB_ENV
+
+      - name: Build
+        shell: pwsh
+        run: >
+          dotnet build Vigor.csproj -c Release
+          "-p:GameVersion=$env:GAME_VERSION" "-p:GamePath=$env:GAME_PATH"
+          -p:ContinuousIntegrationBuild=true -p:Deterministic=true
+
+      - name: Package
+        id: package
+        shell: pwsh
+        run: |
+          $packageRoot = (Resolve-Path 'bin/Release/ModPackage/Vigor').Path
+          Copy-Item modicon.png $packageRoot -Force
+          $version = (Get-Content (Join-Path $packageRoot 'modinfo.json') -Raw | ConvertFrom-Json).version
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $archivePath = Join-Path (Resolve-Path dist) "vigor_$version.zip"
+
+          # Build entries with forward slashes so the archive extracts correctly on every platform.
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [IO.Compression.ZipFile]::Open($archivePath, 'Create')
+          try {
+              Get-ChildItem $packageRoot -File -Recurse | Sort-Object FullName | ForEach-Object {
+                  $entry = $_.FullName.Substring($packageRoot.Length + 1).Replace('\', '/')
+                  [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $_.FullName, $entry, 'Optimal') | Out-Null
+              }
+          } finally { $archive.Dispose() }
+
+          $archive = [IO.Compression.ZipFile]::OpenRead($archivePath)
+          try {
+              $names = @($archive.Entries.FullName)
+              foreach ($required in 'modinfo.json', 'Vigor.dll', 'modicon.png') {
+                  if ($required -notin $names) { throw "Missing archive entry: $required" }
+              }
+              if ($names | Where-Object { $_ -match '\.(cs|pdb)$' -or $_ -match '(VintagestoryAPI|VintagestoryLib|0Harmony|protobuf-net)\.dll$' }) {
+                  throw 'Archive contains unexpected build files.'
+              }
+          } finally { $archive.Dispose() }
+
+          Copy-Item (Join-Path $packageRoot 'Vigor.dll') dist/
+          Push-Location dist
+          Get-ChildItem -File | ForEach-Object { "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } |
+              Set-Content SHA256SUMS.txt -Encoding ascii
+          Get-Content SHA256SUMS.txt
+          Pop-Location
+          "archive=dist/vigor_$version.zip" >> $env:GITHUB_OUTPUT
+          "archive_name=vigor_$version.zip" >> $env:GITHUB_OUTPUT
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            ${{ steps.package.outputs.archive }}
+            dist/Vigor.dll
+
+      - name: Publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARCHIVE: ${{ steps.package.outputs.archive }}
+          ARCHIVE_NAME: ${{ steps.package.outputs.archive_name }}
+        run: |
+          $notes = @"
+          ### Verifying this download
+          This archive was built by GitHub Actions from tag ``$env:TAG`` and carries a signed build provenance attestation. With the GitHub CLI:
+
+          ``````
+          gh attestation verify $env:ARCHIVE_NAME --repo $env:GITHUB_REPOSITORY
+          ``````
+
+          SHA-256 checksums are listed in ``SHA256SUMS.txt``.
+          "@
+          gh release create $env:TAG $env:ARCHIVE dist/SHA256SUMS.txt `
+              --repo $env:GITHUB_REPOSITORY --verify-tag --title "Vigor $env:TAG" `
+              --notes $notes --generate-notes
